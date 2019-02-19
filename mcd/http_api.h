@@ -5,6 +5,8 @@
 
 namespace httpapi {
 
+typedef std::vector<std::string> RequestHeaders;
+
 inline void safeRelease(HINTERNET* handle)
 {
 	if (*handle) {
@@ -91,9 +93,31 @@ inline bool sendRequest(const HttpConnect& conn)
 	return true;
 }
 
+inline Bool addRequestHeader(HINTERNET conn, const std::string& header)
+{
+	return WinHttpAddRequestHeaders(conn, String16(header), -1,
+		WINHTTP_ADDREQ_FLAG_ADD);
+}
+
+inline bool addRequestHeaders(
+	HINTERNET connect,
+	const RequestHeaders& headers
+)
+{
+	for (auto& i : headers) {
+		bool result = addRequestHeader(connect, i);
+		_should(result) << i;
+		if (!result)
+			return false;
+	}
+
+	return true;
+}
+
 inline HttpConnect connect
 (
 	HINTERNET session,
+	const RequestHeaders& headers,
 	StringViewer url,
 	StringViewer verb = "GET"
 )
@@ -121,7 +145,14 @@ inline HttpConnect connect
 	}
 
 	HttpConnect conn(connect, request);
-	bool result = sendRequest(conn);
+	bool result = addRequestHeaders(request, headers);
+	_should(result) << url;
+	if (!result) {
+		conn.release();
+		return HttpConnect();
+	}
+
+	result = sendRequest(conn);
 	_should(result) << url;
 	if (!result) {
 		conn.release();
@@ -185,6 +216,12 @@ inline bool queryRawResponseHeaders(
 
 	_should(rawHeaders->size());
 	return true;
+}
+
+inline Bool readData(const HttpConnect& conn, BinaryData* data)
+{
+	return WinHttpReadData(conn.req(),
+		data->buffer, data->kBufferSize, &data->size);
 }
 
 } // namespace httpapi

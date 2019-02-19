@@ -11,9 +11,12 @@
 #include <map>
 #include <assert.h>
 
-#define KB(value) (value * 1024)
+#define KB(value) ((value) * 1024)
 #define MB(value) (KB(value) * 1024)
 #define GB(value) (MB(value) * 1024)
+#define KB64(value) ((value ## ull) * 1024)
+#define MB64(value) (KB(value ## ull) * 1024)
+#define GB64(value) (MB(value ## ull) * 1024)
 
 
 namespace base
@@ -170,6 +173,19 @@ inline void escapeChar(std::string* str)
 			s = std::regex_replace(s, std::regex(literal), literal);
 	}
 }
+
+inline std::string& toLower(std::string* str)
+{
+	std::transform(str->begin(), str->end(), str->begin(), ::tolower);
+	return *str;
+}
+
+inline const std::string toLower(const std::string& str)
+{
+	std::string str_(str);
+	return toLower(&str_);
+}
+
 } // namespace StringUtil
 
 
@@ -345,6 +361,13 @@ public:
 
 private:
 	bool m_b;
+};
+
+struct BinaryData
+{
+	static const size_t kBufferSize = KB(2);
+	BYTE buffer[kBufferSize];
+	DWORD size;
 };
 
 } // namespace base

@@ -7,7 +7,7 @@ class HttpConfig : public IMetaViewer
 public:
 	static const ULONG kInfinite = -1;
 
-	typedef std::vector<std::string> Headers;
+	typedef RequestHeaders Headers;
 
 	void setHttpProxy(const std::string& server)
 	{
@@ -21,11 +21,17 @@ public:
 
 	void addRequestHeader(const std::string& header)
 	{
-		_should_not(header.find(":") == std::string::npos) << header;
+		if (header.find(":") == std::string::npos) {
+			std::string header_ = header;
+			header_.push_back(':');
+			m_requestHeaders.push_back(header_);
+			return;
+		}
+
 		m_requestHeaders.push_back(header);
 	}
 
-	const Headers& requestHeaders(const std::string& header) const
+	const Headers& requestHeaders() const
 	{
 		return m_requestHeaders;
 	}
@@ -68,44 +74,67 @@ private:
 };
 
 
-class HttpResult : public IMetaViewer
+class HttpHeaders : public IMetaViewer
 {
 public:
-	typedef std::map<std::string, std::string> Headers;
-
-	HttpResult() : m_ok(false)
+	struct HeaderValues : public IMetaViewer
 	{
-		m_lastError =  GetLastError();
-	}
+		MetaViewerFunc
+		{
+			return VarDumper()
+				<< originalKey
+				<< values
+			;
+		}
 
-	HttpResult(int status, const std::string& rawHeaders) :
-		m_ok(true), m_statusCode(status)
+		std::string originalKey;
+		std::vector<std::string> values;
+	};
+
+	typedef std::map<std::string, HeaderValues> Headers;
+
+	HttpHeaders() {}
+	
+	HttpHeaders(const std::string& rawHeaders)
 	{
 		parseRawHeader(rawHeaders);
+		m_contentLength = parseContentLength();
 	}
 
-	operator bool()
+	uint32_t contentLength() const
 	{
-		return m_ok;
+		return m_contentLength;
 	}
 
-	int statusCode()
+	// header names are not case sensitive (RFC-2616)
+	const HeaderValues& operator [](const std::string& key) const
 	{
-		return m_statusCode;
+		auto result = m_headers.find(StringUtil::toLower(key));
+		if (result == m_headers.end())
+			return m_headerNotExists;
+
+		return result->second;
 	}
 
-	const Headers& headers() const
+	bool has(const std::string& key) const
 	{
-		return m_headers;
+		return (*this)[key].values.size();
+	}
+
+	std::string firstValue(const std::string& key) const
+	{
+		auto& key_ = (*this)[key];
+		if (key_.values.empty())
+			return std::string();
+
+		return key_.values[0];
 	}
 
 	MetaViewerFunc
 	{
 		return VarDumper()
-			<< m_ok
-			<< m_statusCode
-			<< m_lastError
 			<< m_headers
+			<< m_contentLength
 		;
 	}
 
@@ -122,24 +151,130 @@ private:
 				continue;
 
 			parser.parse(line);
-			m_headers.insert(Headers::value_type(
-				parser.key(),
-				parser.value()
-			)); 
+			addNewHeader(parser);
 		}
 	}
 
+	void addNewHeader(const StringParser::KeyValue& parser)
+	{
+		std::string lowerKey = StringUtil::toLower(parser.key());
+		auto& mapKey = m_headers[lowerKey];
+		mapKey.originalKey = parser.key();
+		mapKey.values.push_back(parser.value());
+	}
+
+	uint32_t parseContentLength()
+	{
+		auto& header = (*this)["content-length"];
+		_should(header.values.size()) << *this;
+		if (!header.values.size())
+			return -1;
+
+		const std::string& length = header.values[0];
+		try {
+			auto len = std::stoul(length);
+			_must(len < GB64(2)) << length;
+			return len;
+		}
+		catch (...) {
+			_must(false);
+			return -1;
+		}
+	}
+
+	Headers m_headers;
+	HeaderValues m_headerNotExists;
+	uint32_t m_contentLength = -1;
+};
+
+class HttpResult : public IMetaViewer
+{
+public:
+	HttpResult() : m_ok(false)
+	{
+		m_lastError =  GetLastError();
+	}
+
+	HttpResult(int status, const HttpHeaders& headers) :
+		m_ok(true), m_statusCode(status), m_headers(headers)
+	{
+	}
+
+	operator bool()
+	{
+		return m_ok;
+	}
+
+	int statusCode()
+	{
+		return m_statusCode;
+	}
+
+	const HttpHeaders& headers() const
+	{
+		return m_headers;
+	}
+
+	MetaViewerFunc
+	{
+		return VarDumper()
+			<< m_ok
+			<< m_statusCode
+			<< m_lastError
+			<< m_headers
+		;
+	}
+
+private:
 	bool m_ok = false;
 	int m_statusCode;
 	int m_lastError;
-	Headers m_headers;
+	HttpHeaders m_headers;
 };
 
 
-class HttpGetRequest
+class HttpResponseBase
 {
 public:
-	HttpGetRequest(const HttpConfig& config)
+	void setResponsedSize(uint32_t responsedSize)
+	{
+		m_sizeTotal = responsedSize;
+	}
+
+	virtual bool write(const BinaryData& data)
+	{
+		m_sizeDone += data.size;
+		return true;
+	}
+
+private:
+	// WinHTTP donot support 64-bits
+	uint32_t m_sizeTotal = -1;
+	uint32_t m_sizeDone = 0;
+};
+
+
+class HttpResponseString : public HttpResponseBase
+{
+public:
+	HttpResponseString(std::string* str) : m_str(str) {}
+
+	virtual bool write(const BinaryData& data) override
+	{
+		m_str->append((const char*)data.buffer, data.size);
+		return HttpResponseBase::write(data);
+	}
+
+private:
+	std::string* m_str;
+};
+
+
+class HttpRequest
+{
+public:
+	HttpRequest(const HttpConfig& config) :
+		m_headers(config.requestHeaders())
 	{
 		m_session = createSession(
 			config.userAgent(),
@@ -147,7 +282,7 @@ public:
 		_must(m_session);
 	}
 
-	~HttpGetRequest()
+	~HttpRequest()
 	{
 		abortPrevious();
 		safeRelease(&m_session);
@@ -155,17 +290,18 @@ public:
 
 	void abortPrevious()
 	{
+		m_contentLength = -1;
 		m_connect.release();
 	}
 
-	HttpResult open(StringViewer url)
+	HttpResult open(StringViewer url, StringViewer verb)
 	{
 		abortPrevious();
 		_should(m_session) << url;
 		if (!m_session)
 			return HttpResult();
 
-		HttpConnect conn = connect(m_session, url);
+		HttpConnect conn = connect(m_session, m_headers, url, verb);
 		_should(conn) << url;
 		if (!conn)
 			return HttpResult();
@@ -174,14 +310,32 @@ public:
 		return receiveResponse();
 	}
 
-	bool save(std::string* response)
+	bool save(HttpResponseBase* response)
 	{
+		uint32_t sizeReceived = 0;
+		uint32_t sizeTotal = m_contentLength;
+		response->setResponsedSize(sizeTotal);
 
-	}
+		BinaryData data;
+		while (sizeReceived < sizeTotal) {
+			bool result = readData(m_connect, &data);
+			_should(result) << sizeReceived << sizeTotal;
+			if (!result)
+				return false;
 
-	bool save(std::ostream* response)
-	{
+			if (data.size == 0)
+				break;
 
+			result = response->write(data);
+			_should(result);
+			if (!result)
+				return false;
+
+			sizeReceived += data.size;
+		}
+
+		abortPrevious();
+		return true;
 	}
 
 private:
@@ -201,9 +355,30 @@ private:
 		if (!result)
 			return HttpResult();
 
-		return HttpResult((int)statusCode, rawHeaders);
+		HttpHeaders headers(rawHeaders);
+		m_contentLength = headers.contentLength();
+		return HttpResult((int)statusCode, headers);
 	}
 
+	HttpConfig::Headers m_headers;
+	uint32_t m_contentLength = -1;
 	HINTERNET m_session = NULL;
 	HttpConnect m_connect;
+};
+
+class HttpGetRequest : public HttpRequest
+{
+public:
+	HttpGetRequest(const HttpConfig& config) : HttpRequest(config) {}
+
+	HttpResult open(StringViewer url)
+	{
+		return HttpRequest::open(url, "GET");
+	}
+
+	bool save(std::string* str)
+	{
+		HttpResponseString response(str);
+		return HttpRequest::save(&response);
+	}
 };
