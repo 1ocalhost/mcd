@@ -119,6 +119,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="base.h" />
+    <ClInclude Include="guard.h" />
     <ClInclude Include="http.h" />
     <ClInclude Include="http_api.h" />
     <ClInclude Include="ward.h" />

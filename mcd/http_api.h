@@ -1,6 +1,5 @@
 #pragma once
-#include "ward.h"
-#include <winhttp.h>
+#include "guard.h"
 
 
 namespace httpapi {
@@ -74,23 +73,19 @@ inline HINTERNET openRequest
 		isSSL ? WINHTTP_FLAG_SECURE : 0);
 }
 
-inline bool sendRequest(const HttpConnect& conn)
+inline bool sendRequest(HINTERNET request)
 {
-	_must(conn);
-	Bool result = WinHttpSendRequest(conn.req(),
+	or_err(request);
+	Bool result = WinHttpSendRequest(request,
 		WINHTTP_NO_ADDITIONAL_HEADERS, NULL,
 		WINHTTP_NO_REQUEST_DATA, NULL,
 		0, NULL);
 
-	_should(result);
-	if (!result)
-		return false;
+	or_warn(result);
 
 	// wait for headers responsed
-	result = WinHttpReceiveResponse(conn.req(), NULL);
-	_should(result);
-	if (!result)
-		return false;
+	result = WinHttpReceiveResponse(request, NULL);
+	or_warn(result);
 
 	return true;
 }
@@ -106,12 +101,8 @@ inline bool addRequestHeaders(
 	const RequestHeaders& headers
 )
 {
-	for (auto& i : headers) {
-		bool result = addRequestHeader(connect, i);
-		_should(result) << i;
-		if (!result)
-			return false;
-	}
+	for (auto& i : headers)
+		or_warn(addRequestHeader(connect, i), i);
 
 	return true;
 }
@@ -124,44 +115,23 @@ inline HttpConnect connect
 	ConStrRef verb = "GET"
 )
 {
+	using_false(HttpConnect);
+	or_err(session, url);
+
 	StringParser::HttpUrl url_(url);
-	_must(url_.valid()) << url;
-	if (!url_.valid())
-		return HttpConnect();
+	or_err(url_.valid(), url);
 
-	_must(session) << url;
-	HINTERNET connect = WinHttpConnect(session,
+	ResGuard::WinHttp connect = WinHttpConnect(session,
 		u8to16(url_.host()), (WORD)url_.port(), NULL);
+	or_warn(connect, url);
 
-	_should(connect) << url;
-	if (!connect)
-		return HttpConnect();
-
-	HINTERNET request = openRequest(
+	ResGuard::WinHttp request = openRequest(
 		connect, verb, url_.path(), url_.overSSL());
+	or_warn(request, url);
 
-	_should(request) << url;
-	if (!request) {
-		WinHttpCloseHandle(connect);
-		return HttpConnect();
-	}
-
-	HttpConnect conn(connect, request);
-	bool result = addRequestHeaders(request, headers);
-	_should(result) << url;
-	if (!result) {
-		conn.release();
-		return HttpConnect();
-	}
-
-	result = sendRequest(conn);
-	_should(result) << url;
-	if (!result) {
-		conn.release();
-		return HttpConnect();
-	}
-
-	return conn;
+	or_warn(addRequestHeaders(request, headers), url);
+	or_warn(sendRequest(request), url);
+	return HttpConnect(connect.take(), request.take());
 }
 
 inline Bool queryHeaders
@@ -180,7 +150,7 @@ inline Bool queryHeaders
 
 inline bool queryStatusCode(const HttpConnect& conn, int* statusCode)
 {
-	_must(conn);
+	or_err(conn);
 	DWORD statusCode_ = 0;
 	DWORD typeSize = sizeof(statusCode_);
 	Bool result = WinHttpQueryHeaders(conn.req(),
@@ -188,10 +158,7 @@ inline bool queryStatusCode(const HttpConnect& conn, int* statusCode)
 		WINHTTP_HEADER_NAME_BY_INDEX,
 		&statusCode_, &typeSize, WINHTTP_NO_HEADER_INDEX);
 
-	_should(result);
-	if (!result)
-		return false;
-
+	or_warn(result);
 	*statusCode = statusCode_;
 	return true;
 }
@@ -199,7 +166,7 @@ inline bool queryStatusCode(const HttpConnect& conn, int* statusCode)
 inline bool queryRawResponseHeaders(
 	const HttpConnect& conn, std::string* rawHeaders)
 {
-	_must(conn);
+	or_err(conn);
 	LPVOID buffer = NULL;
 	DWORD headerSize = 0;
 
@@ -216,7 +183,7 @@ inline bool queryRawResponseHeaders(
 	if (queryHeaders(conn.req(), buffer, &headerSize))
 		*rawHeaders = StringUtil::u16to8((PCWSTR)buffer);
 
-	_should(rawHeaders->size());
+	or_warn(rawHeaders->size());
 	return true;
 }
 

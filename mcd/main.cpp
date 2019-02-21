@@ -19,7 +19,7 @@ void foo()
 	// test resumable
 	auto url = "https://httpbin.org/get";
 	HttpResult r = http.open(url);
-	_should(r) << url << r;
+	_eval_err(r) << url << r;
 
 	if (r) {
 		std::string text;

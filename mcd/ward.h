@@ -1,6 +1,7 @@
 #pragma once
 #include "base.h"
 
+
 namespace ward
 {
 class IMetaViewer
@@ -192,6 +193,8 @@ private:
 class AssertHelper : public VarDumper
 {
 public:
+	typedef AssertHelper& SelfRef;
+
 	AssertHelper(int type, AssertSrcContext context, bool cond,
 		const char* statement = NULL) :
 		VarDumper(!cond), m_type(type), m_srcContext(context),
@@ -211,6 +214,34 @@ public:
 		if (debugMode())
 			OutputDebugStringA(m_formated.c_str());
 	}
+
+	SelfRef setContext()
+	{
+		return *this;
+	}
+
+	template <class V1>
+	SelfRef setContext(V1 v1)
+	{
+		*this << v1;
+		return *this;
+	}
+
+	template <class V1, class V2>
+	SelfRef setContext(V1 v1, V2 v2)
+	{
+		*this << v1 << v2;
+		return *this;
+	}
+
+	template <class V1, class V2, class V3>
+	SelfRef setContext(V1 v1, V2 v2, V3 v3)
+	{
+		*this << v1 << v2 << v3;
+		return *this;
+	}
+
+	operator bool () const { return m_cond;	}
 
 private:
 	void format()
@@ -248,10 +279,39 @@ private:
 #define SRC_STATEMENT(x) NULL
 #endif
 
-#define _should(cond) AssertHelper(0, SRC_CONTEXT, cond, SRC_STATEMENT(cond))
-#define _should_not(cond) AssertHelper(0, SRC_CONTEXT, !(cond), SRC_STATEMENT(cond))
-#define _must(cond) AssertHelper(1, SRC_CONTEXT, cond, SRC_STATEMENT(cond))
-#define _must_not(cond) AssertHelper(1, SRC_CONTEXT, !(cond), SRC_STATEMENT(cond))
+// try to use 'or_*' statement instead
+#define _eval_warn(cond) AssertHelper(0, SRC_CONTEXT, cond, SRC_STATEMENT(cond))
+#define _eval_err(cond) AssertHelper(1, SRC_CONTEXT, cond, SRC_STATEMENT(cond))
+
+#define or_warn(cond, ...) \
+	if (!_eval_warn(cond).setContext(__VA_ARGS__)) \
+		return _falseValue()
+
+#define or_err(cond, ...) \
+	if (!_eval_err(cond).setContext(__VA_ARGS__)) \
+		return _falseValue()
+
+#define return_warn(...) { \
+	_eval_warn(false).setContext(__VA_ARGS__); \
+	return _falseValue(); \
+}
+
+#define return_err(...) { \
+	_eval_err(false).setContext(__VA_ARGS__); \
+	return _falseValue(); \
+}
+
+
+inline bool _falseValue()
+{
+	return false;
+}
+
+#define using_false(type, ...) \
+	auto _falseValue = []() -> type { \
+		typedef type NamedType; \
+		return NamedType(__VA_ARGS__); \
+	}
 
 } // namespace ward
 

@@ -165,20 +165,18 @@ private:
 
 	uint32_t parseContentLength()
 	{
+		using_false(uint32_t, -1);
 		auto& header = (*this)["content-length"];
-		_should(header.values.size()) << *this;
-		if (!header.values.size())
-			return -1;
+		or_warn(header.values.size(), *this);
 
 		const std::string& length = header.values[0];
 		try {
 			auto len = std::stoul(length);
-			_must(len < GB64(2)) << length;
+			or_err(len < GB64(2), length);
 			return len;
 		}
 		catch (...) {
-			_must(false);
-			return -1;
+			return_err();
 		}
 	}
 
@@ -276,10 +274,16 @@ public:
 	HttpRequest(const HttpConfig& config) :
 		m_headers(config.requestHeaders())
 	{
+		Init(config);
+	}
+
+	bool Init(const HttpConfig& config)
+	{
 		m_session = createSession(
 			config.userAgent(),
 			config.httpProxy());
-		_must(m_session);
+		or_err(m_session);
+		return true;
 	}
 
 	~HttpRequest()
@@ -296,15 +300,12 @@ public:
 
 	HttpResult open(ConStrRef url, ConStrRef verb)
 	{
+		using_false(HttpResult);
 		abortPrevious();
-		_should(m_session) << url;
-		if (!m_session)
-			return HttpResult();
 
+		or_warn(m_session, url);
 		HttpConnect conn = connect(m_session, m_headers, url, verb);
-		_should(conn) << url;
-		if (!conn)
-			return HttpResult();
+		or_warn(conn, url);
 
 		m_connect = conn;
 		return receiveResponse();
@@ -319,17 +320,13 @@ public:
 		BinaryData data;
 		while (sizeReceived < sizeTotal) {
 			bool result = readData(m_connect, &data);
-			_should(result) << sizeReceived << sizeTotal;
-			if (!result)
-				return false;
+			or_warn(result, sizeReceived, sizeTotal);
 
 			if (data.size == 0)
 				break;
 
-			result = response->write(data);
-			_should(result);
-			if (!result)
-				return false;
+			or_warn(response->write(data),
+				sizeReceived, sizeTotal);
 
 			sizeReceived += data.size;
 		}
@@ -341,19 +338,15 @@ public:
 private:
 	HttpResult receiveResponse()
 	{
+		using_false(HttpResult);
+
 		// get status code
 		int statusCode = 0;
-		bool result = queryStatusCode(m_connect, &statusCode);
-		_should(result);
-		if (!result)
-			return HttpResult();
+		or_warn(queryStatusCode(m_connect, &statusCode));
 
 		// get response headers
 		std::string rawHeaders;
-		result = queryRawResponseHeaders(m_connect, &rawHeaders);
-		_should(result);
-		if (!result)
-			return HttpResult();
+		or_warn(queryRawResponseHeaders(m_connect, &rawHeaders));
 
 		HttpHeaders headers(rawHeaders);
 		m_contentLength = headers.contentLength();

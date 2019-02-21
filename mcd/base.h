@@ -9,6 +9,7 @@
 #include <codecvt>
 #include <regex>
 #include <map>
+#include <functional>
 
 #define KB(value) ((value) * 1024)
 #define MB(value) (KB(value) * 1024)

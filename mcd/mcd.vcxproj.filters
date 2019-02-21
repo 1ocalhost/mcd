@@ -32,5 +32,8 @@
     <ClInclude Include="ward.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="guard.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
