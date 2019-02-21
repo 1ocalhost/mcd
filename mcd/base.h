@@ -207,15 +207,18 @@ public:
 		clear();
 		std::cmatch result;
 		std::regex rule(
-			R"((([\da-zA-Z-]+)://)?([\da-zA-Z\.-]+)(:(\d{1,5}))?(/(.*))?)");
+			R"((?:([\da-zA-Z-]+)://)?)" // scheme
+			R"(([\da-zA-Z\.-]+))" // host
+			R"((?::(\d{1,5}))?)" // port
+			R"((/(.*))?)" // path
+		);
 		
 		m_valid = std::regex_match(uri.get(), result, rule);
 		if (m_valid) {
-			assert(result.size() == 8);
-			m_scheme = result[2].str();
-			m_host = result[3].str();
-			m_port = result[5].str();
-			m_path = result[6].str();
+			m_scheme = result[1].str();
+			m_host = result[2].str();
+			m_port = result[3].str();
+			m_path = result[4].str();
 		}
 
 		return m_valid;
