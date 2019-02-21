@@ -9,7 +9,6 @@
 #include <codecvt>
 #include <regex>
 #include <map>
-#include <assert.h>
 
 #define KB(value) ((value) * 1024)
 #define MB(value) (KB(value) * 1024)
@@ -17,6 +16,8 @@
 #define KB64(value) ((value ## ull) * 1024)
 #define MB64(value) (KB(value ## ull) * 1024)
 #define GB64(value) (MB(value ## ull) * 1024)
+
+#define unless(x) if (!(x))
 
 
 namespace base
@@ -31,84 +32,44 @@ inline bool debugMode()
 #endif
 }
 
-
-class StringViewer8
-{
-public:
-	StringViewer8(const char* str) : m_str(str) {}
-	StringViewer8(const std::string& str) : m_str(str.c_str()) {}
-	bool notEmpty() const { return m_str && strlen(m_str); }
-	bool empty() const { return !notEmpty(); }
-	const char* get() { return m_str; }
-	operator const char* () { return m_str; }
-
-private:
-	const char* m_str;
-};
-
-class StringViewer16
-{
-public:
-	StringViewer16(const wchar_t* str) : m_str(str) {}
-	StringViewer16(const std::wstring& str) : m_str(str.c_str()) {}
-	bool notEmpty() const { return m_str && wcslen(m_str); }
-	bool empty() const { return !notEmpty(); }
-	const wchar_t* get() { return m_str; }
-	operator const wchar_t* () { return m_str; }
-
-private:
-	const wchar_t* m_str;
-};
-
-typedef StringViewer8 StringViewer;
-
-
-namespace StringCvt
-{
-inline std::wstring u8to16(StringViewer8 u8)
-{
-	if (u8.empty())
-		return std::wstring();
-
-	return std::wstring_convert<
-		std::codecvt_utf8_utf16<wchar_t>, wchar_t>()
-		.from_bytes(u8.get());
-}
-
-inline std::string u16to8(StringViewer16 u16)
-{
-	if (u16.empty())
-		return std::string();
-
-	return std::wstring_convert<
-		std::codecvt_utf8_utf16<wchar_t>, wchar_t>()
-		.to_bytes(u16.get());
-}
-} // namespace StringCvt
-
-class String16
-{
-public:
-	String16(StringViewer8 u8) : m_str(StringCvt::u8to16(u8)) {}
-	operator const wchar_t* () { return m_str.c_str(); }
-
-private:
-	std::wstring m_str;
-};
-
-class String8
-{
-public:
-	String8(StringViewer16 u16) : m_str(StringCvt::u16to8(u16)) {}
-	operator const char* () { return m_str.c_str(); }
-
-private:
-	std::string m_str;
-};
-
+typedef const std::string& ConStrRef;
+typedef const std::wstring& ConWStrRef;
+typedef const std::string *ConStrPtr;
+typedef const std::wstring *ConWStrPtr;
 
 namespace StringUtil
 {
+
+template <class Ch>
+class basic_strx : public std::basic_string<Ch>
+{
+public:
+	typedef std::basic_string<Ch> SuperType;
+
+	basic_strx() {}
+	basic_strx(const SuperType& str) : SuperType(str) {}
+	basic_strx(const SuperType&& str) : SuperType(str) {}
+	operator const Ch* () { return this->c_str(); }
+};
+
+typedef basic_strx<char> stringx;
+typedef basic_strx<wchar_t> wstringx;
+
+typedef std::wstring_convert<
+	std::codecvt_utf8_utf16<wchar_t>, wchar_t> utf8_16_cvt;
+
+inline wstringx u8to16(ConStrRef u8)
+{
+	return u8.empty() ? wstringx()
+		: utf8_16_cvt().from_bytes(u8.c_str());
+}
+
+inline stringx u16to8(ConWStrRef u16)
+{
+	return u16.empty() ? stringx()
+		: utf8_16_cvt().to_bytes(u16.c_str());
+}
+
 inline std::vector<std::string> split(
 	const std::string& str,
 	const std::string& delimiter,
@@ -123,10 +84,8 @@ inline std::vector<std::string> split(
 
 		void add(const std::string& token)
 		{
-			if (m_ignoreEmpty && token.empty())
-				return;
-
-			push_back(token);
+			unless (m_ignoreEmpty && token.empty())
+				push_back(token);
 		}
 
 	private:
@@ -188,7 +147,6 @@ inline const std::string toLower(const std::string& str)
 
 } // namespace StringUtil
 
-
 namespace StringParser
 {
 
@@ -197,12 +155,12 @@ class URI
 public:
 	URI() {}
 
-	URI(StringViewer uri)
+	URI(ConStrRef uri)
 	{
 		parse(uri);
 	}
 
-	bool parse(StringViewer uri)
+	bool parse(ConStrRef uri)
 	{
 		clear();
 		std::cmatch result;
@@ -213,7 +171,7 @@ public:
 			R"((/(.*))?)" // path
 		);
 		
-		m_valid = std::regex_match(uri.get(), result, rule);
+		m_valid = std::regex_match(uri.c_str(), result, rule);
 		if (m_valid) {
 			m_scheme = result[1].str();
 			m_host = result[2].str();
@@ -252,12 +210,12 @@ class HttpUrl
 public:
 	HttpUrl() {}
 
-	HttpUrl(StringViewer url)
+	HttpUrl(ConStrRef url)
 	{
 		parse(url);
 	}
 
-	bool parse(StringViewer url)
+	bool parse(ConStrRef url)
 	{
 		clear();
 		URI uri(url);

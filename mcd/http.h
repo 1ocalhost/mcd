@@ -294,7 +294,7 @@ public:
 		m_connect.release();
 	}
 
-	HttpResult open(StringViewer url, StringViewer verb)
+	HttpResult open(ConStrRef url, ConStrRef verb)
 	{
 		abortPrevious();
 		_should(m_session) << url;
@@ -371,7 +371,7 @@ class HttpGetRequest : public HttpRequest
 public:
 	HttpGetRequest(const HttpConfig& config) : HttpRequest(config) {}
 
-	HttpResult open(StringViewer url)
+	HttpResult open(ConStrRef url)
 	{
 		return HttpRequest::open(url, "GET");
 	}

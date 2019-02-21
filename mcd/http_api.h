@@ -5,6 +5,8 @@
 
 namespace httpapi {
 
+using StringUtil::u8to16;
+
 typedef std::vector<std::string> RequestHeaders;
 
 inline void safeRelease(HINTERNET* handle)
@@ -17,20 +19,20 @@ inline void safeRelease(HINTERNET* handle)
 
 inline HINTERNET createSession
 (
-	StringViewer agent,
-	StringViewer proxy = NULL,
+	ConStrRef agent,
+	ConStrRef proxy = "",
 	DWORD flags = NULL
 )
 {
-	const bool toUseProxy = proxy.notEmpty();
+	const bool toUseProxy = proxy.size();
 	DWORD accessType = toUseProxy
 		? WINHTTP_ACCESS_TYPE_NAMED_PROXY
 		: WINHTTP_ACCESS_TYPE_NO_PROXY;
 
 	return WinHttpOpen(
-		String16(agent),
+		u8to16(agent),
 		accessType,
-		toUseProxy ? String16(proxy) : WINHTTP_NO_PROXY_NAME,
+		toUseProxy ? u8to16(proxy) : WINHTTP_NO_PROXY_NAME,
 		WINHTTP_NO_PROXY_BYPASS,
 		flags
 	);
@@ -61,13 +63,13 @@ private:
 inline HINTERNET openRequest
 (
 	HINTERNET connect,
-	StringViewer verb,
-	StringViewer path,
+	ConStrRef verb,
+	ConStrRef path,
 	bool isSSL = false
 )
 {
-	return WinHttpOpenRequest(connect, String16(verb),
-		String16(path), NULL, WINHTTP_NO_REFERER,
+	return WinHttpOpenRequest(connect, u8to16(verb),
+		u8to16(path), NULL, WINHTTP_NO_REFERER,
 		WINHTTP_DEFAULT_ACCEPT_TYPES,
 		isSSL ? WINHTTP_FLAG_SECURE : 0);
 }
@@ -95,7 +97,7 @@ inline bool sendRequest(const HttpConnect& conn)
 
 inline Bool addRequestHeader(HINTERNET conn, const std::string& header)
 {
-	return WinHttpAddRequestHeaders(conn, String16(header), -1,
+	return WinHttpAddRequestHeaders(conn, u8to16(header), -1,
 		WINHTTP_ADDREQ_FLAG_ADD);
 }
 
@@ -118,8 +120,8 @@ inline HttpConnect connect
 (
 	HINTERNET session,
 	const RequestHeaders& headers,
-	StringViewer url,
-	StringViewer verb = "GET"
+	ConStrRef url,
+	ConStrRef verb = "GET"
 )
 {
 	StringParser::HttpUrl url_(url);
@@ -129,7 +131,7 @@ inline HttpConnect connect
 
 	_must(session) << url;
 	HINTERNET connect = WinHttpConnect(session,
-		String16(url_.host()), (WORD)url_.port(), NULL);
+		u8to16(url_.host()), (WORD)url_.port(), NULL);
 
 	_should(connect) << url;
 	if (!connect)
@@ -212,7 +214,7 @@ inline bool queryRawResponseHeaders(
 	buffer = buffer_.get();
 
 	if (queryHeaders(conn.req(), buffer, &headerSize))
-		*rawHeaders = StringCvt::u16to8((PCWSTR)buffer);
+		*rawHeaders = StringUtil::u16to8((PCWSTR)buffer);
 
 	_should(rawHeaders->size());
 	return true;
