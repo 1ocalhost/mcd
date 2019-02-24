@@ -15,8 +15,11 @@ public:
 
 	Result() : Result("", kSuccess) {}
 
-	bool ok() { return m_code == kSuccess; }
-	bool failed() { return !ok(); }
+	bool ok() const { return m_code == kSuccess; }
+	bool failed() const { return !ok(); }
+
+	const char* space() const { return m_space; }
+	int code() const { return m_code; }
 
 private:
 	const char* m_space;

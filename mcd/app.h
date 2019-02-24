@@ -21,14 +21,28 @@ class App : public View
 private:
 	void onDownload() override
 	{
+		showError(InternalError::assertFailed());
+		showError(RequireError::httpSupportRange());
+		return;
+
+
 		Result r = startDownload(
 			resUrl(), connNum(), httpConfig());
 
 		if (r.failed()) {
-			//showError();
+			showError(r);
 		}
 
 		uiState().update(r.ok() ? UiState::Working : UiState::Initial);
+	}
+
+	void showError(const Result& r)
+	{
+		std::stringstream ss;
+		ss << "Error: " << r.space() << "." << r.code();
+		ss << std::endl << resUrl();
+
+		uiMessage().info(ss.str());
 	}
 
 	static Result checkUrlSupportRange(bool *support, ConStrRef url,

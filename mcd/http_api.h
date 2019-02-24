@@ -190,7 +190,7 @@ inline Result queryRawResponseHeaders(
 	// must fail on the first pass
 	bool r = queryHeaders(conn.req(), buffer, &headerSize);
 	_must_not(r);
-	_must(GetLastError() != ERROR_INSUFFICIENT_BUFFER);
+	_must(GetLastError() == ERROR_INSUFFICIENT_BUFFER);
 
 	std::unique_ptr<wchar_t> buffer_(new wchar_t[headerSize]);
 	buffer = buffer_.get();

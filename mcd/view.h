@@ -24,15 +24,21 @@ public:
 class UiMessage
 {
 public:
+	void info(ConStrRef msg, ConStrRef title = {})
+	{
+		::MessageBox(0, StringUtil::u8to16(msg),
+			StringUtil::u8to16(title), MB_ICONINFORMATION | MB_OK);
+	}
 };
 
 
 class View
 {
 public:
-	void run()
+	int run()
 	{
-
+		onDownload();
+		return 0;
 	}
 
 	// methods
@@ -42,12 +48,12 @@ public:
 	// data
 	std::string resUrl()
 	{
-		return "";
+		return "https://httpbin.org/get";
 	}
 
 	int connNum()
 	{
-		return 0;
+		return 2;
 	}
 
 	HttpConfig httpConfig()
