@@ -2,6 +2,9 @@
 #include "http_api.h"
 
 
+namespace
+{
+
 class HttpConfig : public IMetaViewer
 {
 public:
@@ -19,7 +22,7 @@ public:
 		return m_httpProxyServer;
 	}
 
-	void addRequestHeader(const std::string& header)
+	void addHeader(const std::string& header)
 	{
 		if (header.find(":") == std::string::npos) {
 			std::string header_ = header;
@@ -31,7 +34,19 @@ public:
 		m_requestHeaders.push_back(header);
 	}
 
-	const Headers& requestHeaders() const
+	bool hasHeader(ConStrRef name) const
+	{
+		for (auto& item : m_requestHeaders) {
+			const auto& r = StringUtil::split(item, ":");
+			if (StringUtil::iEquals(r[0], name)) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	const Headers& headers() const
 	{
 		return m_requestHeaders;
 	}
@@ -46,21 +61,10 @@ public:
 		return m_connectTimeout;
 	}
 
-	void setUserAgent(const std::string& agent)
-	{
-		m_userAgent = agent;
-	}
-
-	const std::string& userAgent() const
-	{
-		return m_userAgent;
-	}
-
 	MetaViewerFunc
 	{
 		return VarDumper()
 			<< m_connectTimeout
-			<< m_userAgent
 			<< m_httpProxyServer
 			<< m_requestHeaders
 		;
@@ -68,7 +72,6 @@ public:
 
 private:
 	ULONG m_connectTimeout = kInfinite;
-	std::string m_userAgent;
 	std::string m_httpProxyServer;
 	Headers m_requestHeaders;
 };
@@ -272,16 +275,14 @@ class HttpRequest
 {
 public:
 	HttpRequest(const HttpConfig& config) :
-		m_headers(config.requestHeaders())
+		m_headers(config.headers())
 	{
 		Init(config);
 	}
 
 	bool Init(const HttpConfig& config)
 	{
-		m_session = createSession(
-			config.userAgent(),
-			config.httpProxy());
+		m_session = createSession(config.httpProxy());
 		or_err(m_session);
 		return true;
 	}
@@ -305,7 +306,7 @@ public:
 
 		or_warn(m_session, url);
 		HttpConnect conn = connect(m_session, m_headers, url, verb);
-		or_warn(conn, url);
+		or_warn(conn);
 
 		m_connect = conn;
 		return receiveResponse();
@@ -375,3 +376,5 @@ public:
 		return HttpRequest::save(&response);
 	}
 };
+
+} // namespace

@@ -35,5 +35,11 @@
     <ClInclude Include="guard.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="app.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="view.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -33,6 +33,12 @@ inline bool debugMode()
 #endif
 }
 
+template <class T>
+inline bool inRange(T v, T begin, T end)
+{
+	return v >= begin && v < end;
+}
+
 typedef const std::string& ConStrRef;
 typedef const std::wstring& ConWStrRef;
 typedef const std::string *ConStrPtr;
@@ -144,6 +150,12 @@ inline const std::string toLower(const std::string& str)
 {
 	std::string str_(str);
 	return toLower(&str_);
+}
+
+inline bool iEquals(ConStrRef a, ConStrRef b)
+{
+	return std::equal(a.begin(), a.end(), b.begin(), b.end(),
+		[](char x, char y) { return ::tolower(x) == ::tolower(y); });
 }
 
 } // namespace StringUtil
@@ -317,7 +329,7 @@ private:
 class Bool
 {
 public:
-	Bool(bool b) : m_b(b) {}
+	Bool(bool b = false) : m_b(b) {}
 	Bool(BOOL b) : m_b(b != FALSE) {}
 	operator bool() const { return m_b; }
 

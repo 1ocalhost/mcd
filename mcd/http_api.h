@@ -18,7 +18,6 @@ inline void safeRelease(HINTERNET* handle)
 
 inline HINTERNET createSession
 (
-	ConStrRef agent,
 	ConStrRef proxy = "",
 	DWORD flags = NULL
 )
@@ -28,13 +27,9 @@ inline HINTERNET createSession
 		? WINHTTP_ACCESS_TYPE_NAMED_PROXY
 		: WINHTTP_ACCESS_TYPE_NO_PROXY;
 
-	return WinHttpOpen(
-		u8to16(agent),
-		accessType,
+	return WinHttpOpen(L"", accessType,
 		toUseProxy ? u8to16(proxy) : WINHTTP_NO_PROXY_NAME,
-		WINHTTP_NO_PROXY_BYPASS,
-		flags
-	);
+		WINHTTP_NO_PROXY_BYPASS, flags);
 }
 
 class HttpConnect
@@ -92,8 +87,12 @@ inline bool sendRequest(HINTERNET request)
 
 inline Bool addRequestHeader(HINTERNET conn, const std::string& header)
 {
-	return WinHttpAddRequestHeaders(conn, u8to16(header), -1,
-		WINHTTP_ADDREQ_FLAG_ADD);
+	or_err(conn);
+	Bool result = WinHttpAddRequestHeaders(conn,
+		u8to16(header), -1, WINHTTP_ADDREQ_FLAG_ADD);
+
+	or_warn(result, header);
+	return true;
 }
 
 inline bool addRequestHeaders(
@@ -102,7 +101,7 @@ inline bool addRequestHeaders(
 )
 {
 	for (auto& i : headers)
-		or_warn(addRequestHeader(connect, i), i);
+		or_warn(addRequestHeader(connect, i));
 
 	return true;
 }
@@ -116,7 +115,7 @@ inline HttpConnect connect
 )
 {
 	using_false(HttpConnect);
-	or_err(session, url);
+	or_err(session, verb, url);
 
 	StringParser::HttpUrl url_(url);
 	or_err(url_.valid(), url);
@@ -129,8 +128,8 @@ inline HttpConnect connect
 		connect, verb, url_.path(), url_.overSSL());
 	or_warn(request, url);
 
-	or_warn(addRequestHeaders(request, headers), url);
-	or_warn(sendRequest(request), url);
+	or_warn(addRequestHeaders(request, headers));
+	or_warn(sendRequest(request));
 	return HttpConnect(connect.take(), request.take());
 }
 

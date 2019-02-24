@@ -118,10 +118,12 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="app.h" />
     <ClInclude Include="base.h" />
     <ClInclude Include="guard.h" />
     <ClInclude Include="http.h" />
     <ClInclude Include="http_api.h" />
+    <ClInclude Include="view.h" />
     <ClInclude Include="ward.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
