@@ -4,6 +4,48 @@
 
 namespace ward
 {
+
+class Result
+{
+public:
+	static const int kSuccess = 0;
+
+	Result(const char* space, int code) :
+		m_space(space), m_code(code) {}
+
+	Result() : Result("", kSuccess) {}
+
+	bool ok() { return m_code == kSuccess; }
+	bool failed() { return !ok(); }
+
+private:
+	const char* m_space;
+	int m_code;
+};
+
+class InternalError {
+	static Result make(int code) { return {"intetnal", code}; }
+
+public:
+	static Result assertFailed() { return make(1); }
+	static Result invalidInput() { return make(2); }
+};
+
+class FeatureError {
+	static Result make(int code) { return { "feature", code }; }
+
+public:
+	static Result httpBodyOver2GB() { return make(1); }
+};
+
+class RequireError {
+	static Result make(int code) { return { "require", code }; }
+
+public:
+	static Result httpSupportRange() { return make(1); }
+};
+
+
 class IMetaViewer
 {
 public:
@@ -279,39 +321,30 @@ private:
 #define SRC_STATEMENT(x) NULL
 #endif
 
-// try to use 'or_*' statement instead
-#define _eval_warn(cond) AssertHelper(0, SRC_CONTEXT, cond, SRC_STATEMENT(cond))
-#define _eval_err(cond) AssertHelper(1, SRC_CONTEXT, cond, SRC_STATEMENT(cond))
+#define _assert_helper(level, cond) \
+	AssertHelper(level, SRC_CONTEXT, cond, SRC_STATEMENT(cond))
+#define _eval_warn(cond) _assert_helper(0, cond)
+#define _eval_error(cond) _assert_helper(1, cond)
 
-#define or_warn(cond, ...) \
-	if (!_eval_warn(cond).setContext(__VA_ARGS__)) \
-		return _falseValue()
+#define _should(statement, ...) \
+	_eval_warn(statement).setContext(__VA_ARGS__)
 
-#define or_err(cond, ...) \
-	if (!_eval_err(cond).setContext(__VA_ARGS__)) \
-		return _falseValue()
+#define _must_or_return(err, statement, ...) \
+	if (!_eval_error(statement).setContext(__VA_ARGS__)) \
+		return err();
 
-#define return_warn(...) { \
-	_eval_warn(false).setContext(__VA_ARGS__); \
-	return _falseValue(); \
+#define _must(statement, ...) \
+	_must_or_return(InternalError::assertFailed, statement, __VA_ARGS__)
+
+#define _must_not(statement, ...) \
+	_must(!(statement), __VA_ARGS__)
+
+#define _call(result) { \
+	Result&& r = result; \
+	if (r.failed()) \
+		return r; \
 }
 
-#define return_err(...) { \
-	_eval_err(false).setContext(__VA_ARGS__); \
-	return _falseValue(); \
-}
-
-
-inline bool _falseValue()
-{
-	return false;
-}
-
-#define using_false(type, ...) \
-	auto _falseValue = []() -> type { \
-		typedef type NamedType; \
-		return NamedType(__VA_ARGS__); \
-	}
 
 } // namespace ward
 

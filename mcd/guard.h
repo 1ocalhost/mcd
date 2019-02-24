@@ -46,7 +46,9 @@ public:
 		return m_handle;
 	}
 
-	operator T() const { return m_handle; }
+	T get() const { return m_handle; }
+
+	operator T() const { return get(); }
 
 private:
 	T m_handle;

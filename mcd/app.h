@@ -21,43 +21,45 @@ class App : public View
 private:
 	void onDownload() override
 	{
-		bool result = startDownload(
+		Result r = startDownload(
 			resUrl(), connNum(), httpConfig());
 
-		if (!result) {
+		if (r.failed()) {
 			//showError();
 		}
 
-		uiState().update(result ? UiState::Working : UiState::Initial);
+		uiState().update(r.ok() ? UiState::Working : UiState::Initial);
 	}
 
-	static bool checkUrlSupportRange(ConStrRef url,
-		const HttpConfig& config, Bool* supportRange)
+	static Result checkUrlSupportRange(bool *support, ConStrRef url,
+		const HttpConfig& config)
 	{
-		or_err(!config.hasHeader("Range"));
+		_must_not(config.hasHeader("Range"));
 		HttpConfig config_(config);
 		config_.addHeader("Range: bytes=0-");
 
-		HttpGetRequest http(config_);
-		HttpResult r = http.open(url);
-		or_warn(r, url, r);
-		or_warn(r.statusCode() == 206, url, r);
-		return true;
+		HttpGetRequest http;
+		_call(http.init(config_));
+		_call(http.open(url));
+
+		*support = (http.statusCode() == 206);
+		_should(*support, url, http);
+		return {};
 	}
 
-	static bool startDownload(ConStrRef url, int connNum = 1,
+	static Result startDownload(ConStrRef url, int connNum = 1,
 		HttpConfig config = HttpConfig())
 	{
-		or_err(inRange(connNum, 1, 50), connNum);
+		_must(inRange(connNum, 1, 50), connNum);
 
 		if (connNum > 1) {
-			Bool supported;
-			or_err(checkUrlSupportRange(url, config, &supported));
-			or_warn(supported, url);
+			bool supported;
+			_call(checkUrlSupportRange(&supported, url, config));
+			_must_or_return(RequireError::httpSupportRange, supported, url);
 		}
 
 		//DownloadTask(url, connNum);
-		return true;
+		return {};
 	}
 };
 

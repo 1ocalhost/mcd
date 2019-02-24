@@ -2,6 +2,13 @@
 #include "guard.h"
 
 
+#define _must_or_return_winhttp_error(result, ...) { \
+	DWORD err = GetLastError(); \
+	if (!_eval_error(result).setContext(__VA_ARGS__)) \
+		return Result("winhttp", err); \
+}
+
+
 namespace httpapi {
 
 using StringUtil::u8to16;
@@ -16,7 +23,7 @@ inline void safeRelease(HINTERNET* handle)
 	}
 }
 
-inline HINTERNET createSession
+inline HINTERNET createSessionWrapper
 (
 	ConStrRef proxy = "",
 	DWORD flags = NULL
@@ -30,6 +37,14 @@ inline HINTERNET createSession
 	return WinHttpOpen(L"", accessType,
 		toUseProxy ? u8to16(proxy) : WINHTTP_NO_PROXY_NAME,
 		WINHTTP_NO_PROXY_BYPASS, flags);
+}
+
+inline Result createSession(HINTERNET *session, ConStrRef proxy)
+{
+	HINTERNET session_ = createSessionWrapper(proxy);
+	_must_or_return_winhttp_error(session_, proxy);
+	*session = session_;
+	return {};
 }
 
 class HttpConnect
@@ -68,70 +83,72 @@ inline HINTERNET openRequest
 		isSSL ? WINHTTP_FLAG_SECURE : 0);
 }
 
-inline bool sendRequest(HINTERNET request)
+inline Result sendRequest(HINTERNET request)
 {
-	or_err(request);
+	_must(request);
 	Bool result = WinHttpSendRequest(request,
 		WINHTTP_NO_ADDITIONAL_HEADERS, NULL,
 		WINHTTP_NO_REQUEST_DATA, NULL,
 		0, NULL);
-
-	or_warn(result);
+	_must_or_return_winhttp_error(result);
 
 	// wait for headers responsed
 	result = WinHttpReceiveResponse(request, NULL);
-	or_warn(result);
-
-	return true;
+	_must_or_return_winhttp_error(result);
+	return {};
 }
 
-inline Bool addRequestHeader(HINTERNET conn, const std::string& header)
+inline Result addRequestHeader(HINTERNET conn, const std::string& header)
 {
-	or_err(conn);
+	_must(conn);
 	Bool result = WinHttpAddRequestHeaders(conn,
 		u8to16(header), -1, WINHTTP_ADDREQ_FLAG_ADD);
 
-	or_warn(result, header);
-	return true;
+	_must_or_return_winhttp_error(result, header);
+	return {};
 }
 
-inline bool addRequestHeaders(
+inline Result addRequestHeaders(
 	HINTERNET connect,
 	const RequestHeaders& headers
 )
 {
-	for (auto& i : headers)
-		or_warn(addRequestHeader(connect, i));
+	for (auto& i : headers) {
+		_call(addRequestHeader(connect, i));
+	}
 
-	return true;
+	return {};
 }
 
-inline HttpConnect connect
+inline Result connect
 (
+	HttpConnect *result,
 	HINTERNET session,
 	const RequestHeaders& headers,
 	ConStrRef url,
 	ConStrRef verb = "GET"
 )
 {
-	using_false(HttpConnect);
-	or_err(session, verb, url);
+	_must(session, verb, url);
 
 	StringParser::HttpUrl url_(url);
-	or_err(url_.valid(), url);
+	_must_or_return(InternalError::invalidInput, url_.valid(), url);
 
 	ResGuard::WinHttp connect = WinHttpConnect(session,
 		u8to16(url_.host()), (WORD)url_.port(), NULL);
-	or_warn(connect, url);
+	_must_or_return_winhttp_error(connect.get(), url);
 
 	ResGuard::WinHttp request = openRequest(
 		connect, verb, url_.path(), url_.overSSL());
-	or_warn(request, url);
+	_must_or_return_winhttp_error(request, url);
 
-	or_warn(addRequestHeaders(request, headers));
-	or_warn(sendRequest(request));
-	return HttpConnect(connect.take(), request.take());
+	_call(addRequestHeaders(request, headers));
+	_call(sendRequest(request));
+
+	*result = HttpConnect(connect.take(), request.take());
+	return {};
 }
+
 
 inline Bool queryHeaders
 (
@@ -147,9 +164,9 @@ inline Bool queryHeaders
 		WINHTTP_NO_HEADER_INDEX);
 }
 
-inline bool queryStatusCode(const HttpConnect& conn, int* statusCode)
+inline Result queryStatusCode(const HttpConnect& conn, int* statusCode)
 {
-	or_err(conn);
+	_must(conn);
 	DWORD statusCode_ = 0;
 	DWORD typeSize = sizeof(statusCode_);
 	Bool result = WinHttpQueryHeaders(conn.req(),
@@ -157,39 +174,41 @@ inline bool queryStatusCode(const HttpConnect& conn, int* statusCode)
 		WINHTTP_HEADER_NAME_BY_INDEX,
 		&statusCode_, &typeSize, WINHTTP_NO_HEADER_INDEX);
 
-	or_warn(result);
+	_must_or_return_winhttp_error(result);
 	*statusCode = statusCode_;
-	return true;
+	return {};
 }
 
-inline bool queryRawResponseHeaders(
+
+inline Result queryRawResponseHeaders(
 	const HttpConnect& conn, std::string* rawHeaders)
 {
-	or_err(conn);
+	_must(conn);
 	LPVOID buffer = NULL;
 	DWORD headerSize = 0;
 
 	// must fail on the first pass
-	if (queryHeaders(conn.req(), buffer, &headerSize))
-		return false;
-
-	if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
-		return false;
+	bool r = queryHeaders(conn.req(), buffer, &headerSize);
+	_must_not(r);
+	_must(GetLastError() != ERROR_INSUFFICIENT_BUFFER);
 
 	std::unique_ptr<wchar_t> buffer_(new wchar_t[headerSize]);
 	buffer = buffer_.get();
 
-	if (queryHeaders(conn.req(), buffer, &headerSize))
-		*rawHeaders = StringUtil::u16to8((PCWSTR)buffer);
+	r = queryHeaders(conn.req(), buffer, &headerSize);
+	_must_or_return_winhttp_error(r);
+	*rawHeaders = StringUtil::u16to8((PCWSTR)buffer);
+	_must(rawHeaders->size());
 
-	or_warn(rawHeaders->size());
-	return true;
+	return {};
 }
 
-inline Bool readData(const HttpConnect& conn, BinaryData* data)
+inline Result readData(const HttpConnect& conn, BinaryData* data)
 {
-	return WinHttpReadData(conn.req(),
+	Bool r = WinHttpReadData(conn.req(),
 		data->buffer, data->kBufferSize, &data->size);
+	_must_or_return_winhttp_error(r);
+	return {};
 }
 
 } // namespace httpapi

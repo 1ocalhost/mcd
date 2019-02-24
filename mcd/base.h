@@ -33,6 +33,7 @@ inline bool debugMode()
 #endif
 }
 
+
 template <class T>
 inline bool inRange(T v, T begin, T end)
 {

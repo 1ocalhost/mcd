@@ -96,12 +96,19 @@ public:
 
 	typedef std::map<std::string, HeaderValues> Headers;
 
-	HttpHeaders() {}
-	
-	HttpHeaders(const std::string& rawHeaders)
+	Result parse(const std::string& rawHeaders)
 	{
 		parseRawHeader(rawHeaders);
-		m_contentLength = parseContentLength();
+		uint32_t length;
+		_call(parseContentLength(&length));
+		m_contentLength = length;
+		return {};
+	}
+
+	void clear()
+	{
+		m_headers.clear();
+		m_contentLength = -1;
 	}
 
 	uint32_t contentLength() const
@@ -166,71 +173,32 @@ private:
 		mapKey.values.push_back(parser.value());
 	}
 
-	uint32_t parseContentLength()
+	Result parseContentLength(uint32_t *result)
 	{
-		using_false(uint32_t, -1);
 		auto& header = (*this)["content-length"];
-		or_warn(header.values.size(), *this);
+		if (!_should(header.values.size(), *this)) {
+			*result = -1;
+			return {};
+		}
 
 		const std::string& length = header.values[0];
 		try {
 			auto len = std::stoul(length);
-			or_err(len < GB64(2), length);
-			return len;
+			_must_or_return(FeatureError::httpBodyOver2GB,
+				len < GB64(2), length);
+			*result = len;
 		}
 		catch (...) {
-			return_err();
+			_must_or_return(InternalError::invalidInput,
+				false, length);
 		}
+
+		return {};
 	}
 
 	Headers m_headers;
 	HeaderValues m_headerNotExists;
 	uint32_t m_contentLength = -1;
-};
-
-class HttpResult : public IMetaViewer
-{
-public:
-	HttpResult() : m_ok(false)
-	{
-		m_lastError =  GetLastError();
-	}
-
-	HttpResult(int status, const HttpHeaders& headers) :
-		m_ok(true), m_statusCode(status), m_headers(headers)
-	{
-	}
-
-	operator bool()
-	{
-		return m_ok;
-	}
-
-	int statusCode()
-	{
-		return m_statusCode;
-	}
-
-	const HttpHeaders& headers() const
-	{
-		return m_headers;
-	}
-
-	MetaViewerFunc
-	{
-		return VarDumper()
-			<< m_ok
-			<< m_statusCode
-			<< m_lastError
-			<< m_headers
-		;
-	}
-
-private:
-	bool m_ok = false;
-	int m_statusCode;
-	int m_lastError;
-	HttpHeaders m_headers;
 };
 
 
@@ -242,10 +210,10 @@ public:
 		m_sizeTotal = responsedSize;
 	}
 
-	virtual bool write(const BinaryData& data)
+	virtual Result write(const BinaryData& data)
 	{
 		m_sizeDone += data.size;
-		return true;
+		return {};
 	}
 
 private:
@@ -260,7 +228,7 @@ class HttpResponseString : public HttpResponseBase
 public:
 	HttpResponseString(std::string* str) : m_str(str) {}
 
-	virtual bool write(const BinaryData& data) override
+	virtual Result write(const BinaryData& data) override
 	{
 		m_str->append((const char*)data.buffer, data.size);
 		return HttpResponseBase::write(data);
@@ -271,20 +239,17 @@ private:
 };
 
 
-class HttpRequest
+class HttpRequest : public IMetaViewer
 {
 public:
-	HttpRequest(const HttpConfig& config) :
-		m_headers(config.headers())
+	Result init(const HttpConfig& config)
 	{
-		Init(config);
-	}
-
-	bool Init(const HttpConfig& config)
-	{
-		m_session = createSession(config.httpProxy());
-		or_err(m_session);
-		return true;
+		m_headers = config.headers();
+		HINTERNET session;
+		_call(createSession(&session, config.httpProxy()));
+		_must(session);
+		m_session = session;
+		return {};
 	}
 
 	~HttpRequest()
@@ -295,24 +260,28 @@ public:
 
 	void abortPrevious()
 	{
+		m_statusCode = 0;
+		m_responseHeaders.clear();
+
 		m_contentLength = -1;
 		m_connect.release();
 	}
 
-	HttpResult open(ConStrRef url, ConStrRef verb)
+	Result open(ConStrRef url, ConStrRef verb)
 	{
-		using_false(HttpResult);
+		_must(m_session, url);
 		abortPrevious();
 
-		or_warn(m_session, url);
-		HttpConnect conn = connect(m_session, m_headers, url, verb);
-		or_warn(conn);
+		HttpConnect conn;
+		_call(connect(&conn, m_session,
+			m_headers, url, verb));
 
+		_must(conn);
 		m_connect = conn;
 		return receiveResponse();
 	}
 
-	bool save(HttpResponseBase* response)
+	Result save(HttpResponseBase* response)
 	{
 		uint32_t sizeReceived = 0;
 		uint32_t sizeTotal = m_contentLength;
@@ -320,41 +289,56 @@ public:
 
 		BinaryData data;
 		while (sizeReceived < sizeTotal) {
-			bool result = readData(m_connect, &data);
-			or_warn(result, sizeReceived, sizeTotal);
+			_call(readData(m_connect, &data));
 
 			if (data.size == 0)
 				break;
 
-			or_warn(response->write(data),
-				sizeReceived, sizeTotal);
-
+			_call(response->write(data));
 			sizeReceived += data.size;
 		}
 
 		abortPrevious();
-		return true;
+		return {};
+	}
+
+	int statusCode() const
+	{
+		return m_statusCode;
 	}
 
 private:
-	HttpResult receiveResponse()
+	Result receiveResponse()
 	{
-		using_false(HttpResult);
-
 		// get status code
 		int statusCode = 0;
-		or_warn(queryStatusCode(m_connect, &statusCode));
+		_call(queryStatusCode(m_connect, &statusCode));
 
 		// get response headers
 		std::string rawHeaders;
-		or_warn(queryRawResponseHeaders(m_connect, &rawHeaders));
+		_call(queryRawResponseHeaders(m_connect, &rawHeaders));
 
-		HttpHeaders headers(rawHeaders);
+		HttpHeaders headers;
+		_call(headers.parse(rawHeaders));
+
 		m_contentLength = headers.contentLength();
-		return HttpResult((int)statusCode, headers);
+		m_statusCode = (int)statusCode;
+		m_responseHeaders = headers;
+		return {};
 	}
 
+	MetaViewerFunc
+	{
+		return VarDumper()
+			<< m_headers
+			<< m_statusCode
+			<< m_responseHeaders
+		;
+	}
+
+	int m_statusCode;
 	HttpConfig::Headers m_headers;
+	HttpHeaders m_responseHeaders;
 	uint32_t m_contentLength = -1;
 	HINTERNET m_session = NULL;
 	HttpConnect m_connect;
@@ -363,14 +347,12 @@ private:
 class HttpGetRequest : public HttpRequest
 {
 public:
-	HttpGetRequest(const HttpConfig& config) : HttpRequest(config) {}
-
-	HttpResult open(ConStrRef url)
+	Result open(ConStrRef url)
 	{
 		return HttpRequest::open(url, "GET");
 	}
 
-	bool save(std::string* str)
+	Result save(std::string* str)
 	{
 		HttpResponseString response(str);
 		return HttpRequest::save(&response);
