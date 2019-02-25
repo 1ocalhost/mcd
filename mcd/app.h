@@ -19,30 +19,38 @@ class DlWorker
 class App : public View
 {
 private:
+	bool onQuit() override
+	{
+		return uiMessage.ask("Quit?");
+	}
+
+	void onSelectFolder() override
+	{
+		uiMessage.info("onSelectFolder");
+	}
+
 	void onDownload() override
 	{
 		showError(InternalError::assertFailed());
-		showError(RequireError::httpSupportRange());
 		return;
 
 
-		Result r = startDownload(
-			resUrl(), connNum(), httpConfig());
+		Result r = startDownload(uiUrl, uiConnNum, httpConfig());
 
 		if (r.failed()) {
 			showError(r);
 		}
 
-		uiState().update(r.ok() ? UiState::Working : UiState::Initial);
+		uiState.update(r.ok() ? UiState::Working : UiState::Initial);
 	}
 
 	void showError(const Result& r)
 	{
 		std::stringstream ss;
 		ss << "Error: " << r.space() << "." << r.code();
-		ss << std::endl << resUrl();
+		ss << std::endl << (ConStrRef)uiUrl;
 
-		uiMessage().info(ss.str());
+		uiMessage.info(ss.str());
 	}
 
 	static Result checkUrlSupportRange(bool *support, ConStrRef url,

@@ -18,10 +18,10 @@
 
 
 int WINAPI WinMain(
-	HINSTANCE hInstance,
-	HINSTANCE hPrevInstance,
-	LPSTR lpCmdLine,
+	HINSTANCE,
+	HINSTANCE,
+	LPSTR,
 	int nCmdShow)
 {
-	return app::App().run();
+	return app::App().run(nCmdShow);
 }
