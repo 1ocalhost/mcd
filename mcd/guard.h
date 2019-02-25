@@ -70,6 +70,19 @@ public:
 	}
 };
 
+class Font : public ResGuardBase<HFONT>
+{
+public:
+	Font(HFONT handle = NULL) :
+		ResGuardBase<HFONT>(handle, deleter) {}
+
+	static void deleter(HINTERNET handle)
+	{
+		if (handle)
+			DeleteObject(handle);
+	}
+};
+
 } // namespace ResGuard
 
 } // namespace guard

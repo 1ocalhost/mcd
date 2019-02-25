@@ -21,7 +21,7 @@ class App : public View
 private:
 	bool onQuit() override
 	{
-		return uiMessage.ask("Quit?");
+		return uiMessage.ask("Quit?", false);
 	}
 
 	void onSelectFolder() override
@@ -48,7 +48,7 @@ private:
 	{
 		std::stringstream ss;
 		ss << "Error: " << r.space() << "." << r.code();
-		ss << std::endl << (ConStrRef)uiUrl;
+		ss << std::endl << uiUrl.get();
 
 		uiMessage.info(ss.str());
 	}
