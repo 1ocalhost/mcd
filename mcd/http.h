@@ -8,7 +8,7 @@ namespace
 class HttpConfig : public IMetaViewer
 {
 public:
-	static const ULONG kInfinite = -1;
+	static const ULONG kInfinite = (ULONG)-1;
 
 	typedef RequestHeaders Headers;
 
@@ -108,7 +108,7 @@ public:
 	void clear()
 	{
 		m_headers.clear();
-		m_contentLength = -1;
+		m_contentLength = (uint32_t)-1;
 	}
 
 	uint32_t contentLength() const
@@ -177,28 +177,25 @@ private:
 	{
 		auto& header = (*this)["content-length"];
 		if (!_should(header.values.size(), *this)) {
-			*result = -1;
+			*result = (uint32_t)-1;
 			return {};
 		}
 
+		unsigned long lengthNumber = 0;
 		const std::string& length = header.values[0];
-		try {
-			auto len = std::stoul(length);
-			_must_or_return(FeatureError::httpBodyOver2GB,
-				len < GB64(2), length);
-			*result = len;
-		}
-		catch (...) {
-			_must_or_return(InternalError::invalidInput,
-				false, length);
-		}
+		bool r = StringUtil::toNumber(length, &lengthNumber);
 
+		_must_or_return(InternalError::invalidInput, r, length);
+		_must_or_return(FeatureError::httpBodyOver2GB,
+			lengthNumber < GB64(2), length);
+
+		*result = (uint32_t)lengthNumber;
 		return {};
 	}
 
 	Headers m_headers;
 	HeaderValues m_headerNotExists;
-	uint32_t m_contentLength = -1;
+	uint32_t m_contentLength = (uint32_t)-1;
 };
 
 
@@ -218,7 +215,7 @@ public:
 
 private:
 	// WinHTTP donot support 64-bits
-	uint32_t m_sizeTotal = -1;
+	uint32_t m_sizeTotal = (uint32_t)-1;
 	uint32_t m_sizeDone = 0;
 };
 
@@ -263,7 +260,7 @@ public:
 		m_statusCode = 0;
 		m_responseHeaders.clear();
 
-		m_contentLength = -1;
+		m_contentLength = (uint32_t)-1;
 		m_connect.release();
 	}
 
@@ -339,7 +336,7 @@ private:
 	int m_statusCode;
 	HttpConfig::Headers m_headers;
 	HttpHeaders m_responseHeaders;
-	uint32_t m_contentLength = -1;
+	uint32_t m_contentLength = (uint32_t)-1;
 	HINTERNET m_session = NULL;
 	HttpConnect m_connect;
 };

@@ -102,7 +102,7 @@ inline Result addRequestHeader(HINTERNET conn, const std::string& header)
 {
 	_must(conn);
 	Bool result = WinHttpAddRequestHeaders(conn,
-		u8to16(header), -1, WINHTTP_ADDREQ_FLAG_ADD);
+		u8to16(header), (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
 
 	_must_or_return_winhttp_error(result, header);
 	return {};

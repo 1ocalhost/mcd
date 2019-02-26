@@ -2,34 +2,36 @@
 #include "guard.h"
 #include <atlbase.h>
 #include <atlstdthunk.h>
+//#include <CommCtrl.h>
 #include <windowsx.h>
-
+#include <Shlobj.h> // SHBrowseForFolder
 
 namespace view
 {
 
-class Size
+class GuiWindow
 {
 public:
-	Size() {}
-	Size(int w, int h) { set(w, h); }
+	HWND hwnd() const { return m_hwnd; }
+	void setHwnd(HWND hwnd) { m_hwnd = hwnd; }
 
-	int width() const { return m_width; }
-	int height() const { return m_height; }
-
-	void width(int w) { m_width = w; }
-	void height(int h) { m_height = h; }
-
-	void set(int w, int h)
+	std::string guiText()
 	{
-		m_width = w;
-		m_height = h;
+		const int kSize = KB(5);
+		std::unique_ptr<WCHAR> guard(new WCHAR[kSize]());
+		GetWindowText(hwnd(), guard.get(), kSize);
+		return StringUtil::u16to8(guard.get());
+	}
+
+	void setGuiText(ConStrRef text)
+	{
+		SetWindowText(hwnd(), StringUtil::u8to16(text));
 	}
 
 private:
-	int m_width = 0;
-	int m_height = 0;
+	HWND m_hwnd = NULL;
 };
+
 
 class UiState
 {
@@ -42,25 +44,7 @@ public:
 
 	void update(State s)
 	{
-	}
-};
-
-
-class UiMessage
-{
-public:
-	void info(ConStrRef msg, ConStrRef title = {})
-	{
-		MessageBox(0, StringUtil::u8to16(msg),
-			StringUtil::u8to16(title), MB_ICONINFORMATION | MB_OK);
-	}
-
-	bool ask(ConStrRef msg, bool defaultBtn = true, ConStrRef title = {})
-	{
-		DWORD extraFlag = defaultBtn ? MB_DEFBUTTON1 : MB_DEFBUTTON2;
-		return IDYES == MessageBox(0, StringUtil::u8to16(msg),
-			StringUtil::u8to16(title),
-			extraFlag | MB_ICONQUESTION | MB_YESNO);
+		UNUSED(s);
 	}
 };
 
@@ -68,7 +52,62 @@ public:
 class UiUtil
 {
 public:
-	UiUtil()
+	UiUtil(HWND hwnd = NULL) : m_hwnd(hwnd) {}
+
+	void info(ConStrRef msg, ConStrRef title = {}) const
+	{
+		MessageBox(m_hwnd, StringUtil::u8to16(msg),
+			StringUtil::u8to16(title), MB_ICONINFORMATION | MB_OK);
+	}
+
+	bool ask(ConStrRef msg, bool defaultBtn = true, ConStrRef title = {}) const
+	{
+		DWORD extraFlag = defaultBtn ? MB_DEFBUTTON1 : MB_DEFBUTTON2;
+		return IDYES == MessageBox(m_hwnd, StringUtil::u8to16(msg),
+			StringUtil::u8to16(title),
+			extraFlag | MB_ICONQUESTION | MB_YESNO);
+	}
+
+	std::string browseForFolder(ConStrRef title = "") const
+	{
+		std::wstring title16 = StringUtil::u8to16(title);
+
+		TCHAR szDir[MAX_PATH];
+		BROWSEINFO bInfo;
+		bInfo.hwndOwner = m_hwnd;
+		bInfo.pidlRoot = NULL;
+		bInfo.pszDisplayName = szDir;
+		bInfo.lpszTitle = title16.c_str();
+		bInfo.ulFlags = 0;
+		bInfo.lpfn = NULL;
+		bInfo.lParam = 0;
+		bInfo.iImage = -1;
+
+		LPITEMIDLIST lpItem = SHBrowseForFolder(&bInfo);
+		if (lpItem != NULL)
+		{
+			SHGetPathFromIDList(lpItem, szDir);
+			return StringUtil::u16to8(szDir);
+		}
+
+		return {};
+	}
+
+	void revealPath(ConStrRef path)
+	{
+		ShellExecute(NULL, L"open", StringUtil::u8to16(path),
+			NULL, NULL, SW_SHOWDEFAULT);
+	}
+
+private:
+	HWND m_hwnd = NULL;
+};
+
+
+class GuiHelper
+{
+public:
+	GuiHelper()
 	{
 		createUiFont();
 	}
@@ -85,7 +124,7 @@ public:
 
 		RECT rect = {0};
 		auto text_ = StringUtil::u8to16(text);
-		DrawText(dc, text_, text_.size(), &rect,
+		DrawText(dc, text_, (int)text_.size(), &rect,
 			DT_CALCRECT | DT_NOPREFIX | DT_SINGLELINE);
 
 		DeleteDC(dc);
@@ -170,12 +209,17 @@ public:
 		m_value = newValue;
 	}
 
+	void setDirectly(ConRef newValue)
+	{
+		m_value = newValue;
+	}
+
 private:
 	T m_value;
 	Notifier m_notifier;
 };
 
-class BaseCtrl
+class BaseCtrl : public GuiWindow
 {
 public:
 	virtual ~BaseCtrl() {}
@@ -186,100 +230,125 @@ public:
 		setWidth(m_layoutWidth);
 	}
 
-	UiUtil* util() const { return m_util; }
+	GuiHelper* guiHelper() const { return m_guiHelper; }
 	HWND parentHwnd() const { return m_parentHwnd; }
-	HWND hwnd() const { return m_hwnd; }
 	Layout::Style layoutStyle() const { return m_layoutStyle; }
 	int layoutWidth() const { return m_layoutWidth; }
 	Size size() const { return m_size; }
+	int totalWidth() const { return size().width() + m_MarginRight; }
 
-	//void setHwnd(HWND hwnd) { m_hwnd = hwnd; }
 	void setSize(const Size& s) { m_size = s; }
 	void setWidth(int width) { m_size.width(width); }
 	void setHeight(int height) { m_size.height(height); }
 
-	void onMessageCommand(WORD eventType, HWND src)
+	BaseCtrl* setMarginRight(int r)
 	{
-		if (!m_hwnd)
-			return;
-
-		switch (eventType)
-		{
-		case BN_CLICKED:
-			if (src == m_hwnd)
-				onClick();
-			break;
-		}
+		m_MarginRight = r;
+		return this;
 	}
 
-	void init(HWND parentHwnd, UiUtil* util, int lineHeight)
+	void init(HWND parentHwnd, GuiHelper* guiHelper, int lineHeight)
 	{
 		m_parentHwnd = parentHwnd;
-		m_util = util;
+		m_guiHelper = guiHelper;
 		m_lineHeight = lineHeight;
 		setHeight(lineHeight);
 
-		if (layoutStyle() == Layout::Style::Optimum)
-			calcOptimumSize();
+		calcOptimumSize();
 	}
 
-	void createWindow(int x, int y,
+	void createWindow(Point pos,
 		PCWSTR typeName, ConStrRef title,
 		DWORD style = 0, DWORD exStyle = 0)
 	{
 		int offsetY = (m_lineHeight - size().height()) / 2;
-		m_hwnd = CreateWindowEx(
+		setHwnd(CreateWindowEx(
 			exStyle,
 			typeName,
 			StringUtil::u8to16(title),
 			style | WS_CHILD | WS_VISIBLE,
-			x, y + offsetY, size().width(), size().height(),
+			pos.x(), pos.y() + offsetY,
+			size().width(), size().height(),
 			parentHwnd(),
 			NULL,
 			GetModuleHandle(NULL),
 			NULL
-		);
+		));
 	}
 
-	virtual void onClick() {}
+	virtual void onMessageCommand(WORD /*eventType*/) {}
+	virtual void onMessageNotify(LPNMHDR /*info*/) {}
 	virtual void calcOptimumSize() = 0;
-	virtual void create(int x, int y) = 0;
+	virtual void create(Point pos) = 0;
 
 private:
-	UiUtil* m_util = nullptr;
+	GuiHelper* m_guiHelper = nullptr;
 	HWND m_parentHwnd = NULL;
-	HWND m_hwnd = NULL;
 	Layout::Style m_layoutStyle;
 	int m_lineHeight = 0;
 	int m_layoutWidth = 0;
+	int m_MarginRight = 0;
 	Size m_size;
 };
 
 class TextCtrl : public BaseCtrl
 {
 public:
+	typedef UiBinding<std::string> *BindingType;
+
+
 	TextCtrl(Layout::Style style, int width = 0) :
-		BaseCtrl(style, width) {}
+		BaseCtrl(style, width)
+	{
+		setMarginRight(5);
+	}
 
 	TextCtrl* setDefault(ConStrRef text)
 	{
-		m_text = text;
+		m_default = text;
+		return bindModel(&m_default);
+	}
+
+	TextCtrl* setEndWithEllipsis(bool enabled = true, bool word = false)
+	{
+		m_endEllipsisflag = ((enabled ? SS_ENDELLIPSIS : 0)
+			| (word ? SS_WORDELLIPSIS : SS_PATHELLIPSIS));
+		return this;
+	}
+
+	TextCtrl* bindModel(BindingType binding)
+	{
+		m_binding = binding;
+		m_binding->subscribe(
+			[=](ConStrRef from, ConStrRef to) {
+			if (from != to && guiText() != to)
+				setGuiText(to);
+		});
+
 		return this;
 	}
 
 	void calcOptimumSize() override
 	{
-		Size size = util()->calcTextSize(m_text);
+		if (!m_binding)
+			return;
+
+		Size size = guiHelper()->calcTextSize(*m_binding);
 		setSize(size);
 	}
 
-	void create(int x, int y) override
+	void create(Point pos) override
 	{
-		createWindow(x, y, L"Static", m_text);
+		if (!m_binding)
+			return;
+
+		createWindow(pos, L"Static", *m_binding, m_endEllipsisflag);
 	}
 
 private:
-	std::string m_text;
+	DWORD m_endEllipsisflag = 0;
+	UiBinding<std::string> m_default;
+	BindingType m_binding = nullptr;
 };
 
 class EditCtrl : public BaseCtrl
@@ -288,24 +357,40 @@ public:
 	typedef UiBinding<std::string> *BindingType;
 
 	EditCtrl(Layout::Style style, int width = 0) :
-		BaseCtrl(style, width) {}
+		BaseCtrl(style, width)
+	{
+		setMarginRight(5);
+	}
 
-	EditCtrl* bind(BindingType binding)
+	EditCtrl* bindModel(BindingType binding)
 	{
 		m_binding = binding;
+		m_binding->subscribe(
+			[=](ConStrRef from, ConStrRef to) {
+			if (from != to && guiText() != to)
+				setGuiText(to);
+		});
+
 		return this;
 	}
 
 	void calcOptimumSize() override
 	{
-		Size size = util()->calcTextSize(*m_binding);
-		setSize(size);
+		std::string text = m_binding->get() + "wrap";
+		Size size_ = guiHelper()->calcTextSize(text);
+		setWidth(size_.width());
 	}
 
-	void create(int x, int y) override
+	void create(Point pos) override
 	{
-		createWindow(x, y, L"Edit", *m_binding,
+		createWindow(pos, L"Edit", *m_binding,
 			ES_AUTOHSCROLL, WS_EX_CLIENTEDGE);
+	}
+
+	void onMessageCommand(WORD eventType) override
+	{
+		if (eventType == EN_CHANGE)
+			m_binding->setDirectly(guiText());
 	}
 
 private:
@@ -318,17 +403,9 @@ public:
 	SpacingCtrl(Layout::Style style, int width = 0) :
 		BaseCtrl(style, width) {}
 
-	void calcOptimumSize() override
-	{
-
-	}
-
-	void create(int x, int y) override
-	{
-
-	}
-
-private:
+	// do nothing
+	void calcOptimumSize() override {}
+	void create(Point /*pos*/) override {}
 };
 
 class ButtonCtrl : public BaseCtrl
@@ -352,12 +429,19 @@ public:
 
 	void calcOptimumSize() override
 	{
-
+		Size size_ = guiHelper()->calcTextSize(m_text + "wrap");
+		setSize({size_.width(), size().height() + 2});
 	}
 
-	void create(int x, int y) override
+	void create(Point pos) override
 	{
+		createWindow(pos, L"Button", m_text, BS_DEFPUSHBUTTON);
+	}
 
+	void onMessageCommand(WORD eventType) override
+	{
+		if (eventType == BN_CLICKED && m_onClick)
+			m_onClick();
 	}
 
 private:
@@ -365,32 +449,146 @@ private:
 	std::function<void()> m_onClick;
 };
 
-class NumberCtrl : public BaseCtrl
+class HyperlinkCtrl : public BaseCtrl
 {
 public:
-	typedef UiBinding<int> *BindingType;
-
-	NumberCtrl(Layout::Style style, int width = 0) :
-		BaseCtrl(style, width) {}
-
-	NumberCtrl* bind(BindingType binding)
+	HyperlinkCtrl(Layout::Style style, int width = 0) :
+		BaseCtrl(style, width)
 	{
-		m_binding = binding;
+		setMarginRight(5);
+	}
+
+	HyperlinkCtrl* setDefault(ConStrRef text)
+	{
+		m_text = text;
+		return this;
+	}
+
+	template <class Obj, class Fn>
+	HyperlinkCtrl* onClick(Obj&& that, Fn&& func)
+	{
+		m_onClick = std::bind(func, that);
 		return this;
 	}
 
 	void calcOptimumSize() override
 	{
-
+		setSize(guiHelper()->calcTextSize(m_text));
 	}
 
-	void create(int x, int y) override
+	void create(Point pos) override
 	{
+		std::stringstream ss;
+		ss << "<a>" << m_text << "</a>";
+		createWindow(pos, L"SysLink", ss.str());
+	}
 
+	void onMessageNotify(LPNMHDR info) override
+	{
+		UINT code = info->code;
+		if (code == NM_CLICK || code == NM_RETURN) {
+			if (m_onClick)
+				m_onClick();
+		}
 	}
 
 private:
+	std::string m_text;
+	std::function<void()> m_onClick;
+};
+
+class EditNumCtrl : public EditCtrl
+{
+public:
+	typedef UiBinding<int> *BindingType;
+
+	EditNumCtrl(Layout::Style style, int width = 0) :
+		EditCtrl(style, width)
+	{
+		setMarginRight(2);
+		m_proxy = "0";
+	}
+
+	EditNumCtrl* bindModel(BindingType binding)
+	{
+		m_proxy = StringUtil::toString((int)*binding);
+		EditCtrl::bindModel(&m_proxy);
+
+		m_binding = binding;
+		m_binding->subscribe(
+			[=](const int& from, const int& to) {
+				UNUSED(from);
+				m_proxy = StringUtil::toString(to);
+		});
+
+		return this;
+	}
+
+	void create(Point pos) override
+	{
+		createWindow(pos, L"Edit", m_proxy,
+			ES_AUTOHSCROLL | ES_NUMBER, WS_EX_CLIENTEDGE);
+	}
+
+	void onMessageCommand(WORD eventType) override
+	{
+		EditCtrl::onMessageCommand(eventType);
+		const int kMax = std::numeric_limits<int>::max();
+
+		unsigned long value = 0;
+		if (StringUtil::toNumber(m_proxy, &value)
+			&& value <= (unsigned long)kMax) {
+			m_binding->setDirectly((int)value);
+			return;
+		}
+
+		m_binding->setDirectly(0);
+		m_proxy = "0";
+	}
+
+private:
+	UiBinding<std::string> m_proxy;
 	BindingType m_binding = nullptr;
+};
+
+class UpDownCtrl : public BaseCtrl
+{
+public:
+	typedef UiBinding<int> *BindingType;
+
+	UpDownCtrl(Layout::Style style, int width = 0) :
+		BaseCtrl(style, width) {}
+
+	template <class Obj, class Fn>
+	UpDownCtrl* onChanged(Obj&& that, Fn&& func)
+	{
+		using namespace std::placeholders;
+		m_onChanged = std::bind(func, that, _1);
+		return this;
+	}
+
+	void calcOptimumSize() override
+	{
+		Size size_ = guiHelper()->calcTextSize("aaa");
+		setWidth(size_.width());
+	}
+
+	void create(Point pos) override
+	{
+		createWindow(pos, L"msctls_updown32", "");
+	}
+
+	void onMessageNotify(LPNMHDR info) override
+	{
+		UINT code = info->code;
+		if (code == UDN_DELTAPOS) {
+			if (m_onChanged)
+				m_onChanged(((LPNMUPDOWN)info)->iDelta < 0);
+		}
+	}
+
+private:
+	std::function<void(bool /*upOrDown*/)> m_onChanged;
 };
 
 
@@ -418,18 +616,34 @@ public:
 		if (hwnd == NULL)
 			return -1;
 
-		m_util.init(hwnd);
+		m_guiHelper.init(hwnd);
 		m_hwnd = hwnd;
+		if (m_eventInit)
+			m_eventInit(*this);
+
 		m_defaultWndProc = (WNDPROC)GetWindowLongPtr(hwnd, GWLP_WNDPROC);
 		SetWindowLongPtr(hwnd, GWLP_WNDPROC,
 			(LONG_PTR)m_thunk.GetCodeAddress());
 
 		createControls();
-		m_util.resetWindowFont(hwnd);
+		m_guiHelper.resetWindowFont(hwnd);
 
 		ShowWindow(hwnd, showState);
 		UpdateWindow(hwnd);
 		return messageLoop();
+	}
+
+	HWND hwnd() const
+	{
+		return m_hwnd;
+	}
+
+	template <class Obj, class Fn>
+	Window& onInit(Obj&& that, Fn&& func)
+	{
+		using namespace std::placeholders;
+		m_eventInit = std::bind(func, that, _1);
+		return *this;
 	}
 
 	template <class Obj, class Fn>
@@ -451,7 +665,11 @@ private:
 		switch (uMsg)
 		{
 		case WM_COMMAND:
-			onMessageCommand(HIWORD(wParam), (HWND)lParam);
+			onMessageCommand((HWND)lParam, HIWORD(wParam));
+			break;
+
+		case WM_NOTIFY:
+			onMessageNotify((LPNMHDR)lParam);
 			break;
 
 		case WM_CLOSE:
@@ -466,15 +684,26 @@ private:
 			m_hwnd, uMsg, wParam, lParam);
 	}
 
-	void onMessageCommand(WORD eventType, HWND src)
+	void onMessageCommand(HWND from, WORD eventType)
 	{
-		switch (eventType)
-		{
-		case BN_CLICKED:
-			for (auto& i : m_resGuard) {
-				i->onMessageCommand(eventType, src);
+		for (auto& i : m_resGuard) {
+			HWND hwnd = i->hwnd();
+			if (hwnd && hwnd == from) {
+				i->onMessageCommand(eventType);
+				break;
 			}
-			break;
+		}
+	}
+
+	void onMessageNotify(LPNMHDR info)
+	{
+		HWND from = info->hwndFrom;
+		for (auto& i : m_resGuard) {
+			HWND hwnd = i->hwnd();
+			if (hwnd && hwnd == from) {
+				i->onMessageNotify(info);
+				break;
+			}
 		}
 	}
 
@@ -531,27 +760,61 @@ private:
 
 	int calcLineHeight()
 	{
-		return m_util.calcTextSize("a").height() + 8;
+		return m_guiHelper.calcTextSize("a").height() + 8;
 	}
 
 	void createControls()
 	{
 		RECT clientRect = {0};
 		GetClientRect(m_hwnd, &clientRect);
-		int containerWidth = clientRect.right;
+
+		const int kContainerPadding = 10;
+
+		int containerWidth = clientRect.right - kContainerPadding*2;
 		int lineHeight = calcLineHeight();
-		int curPosX = 0;
-		int curPosY = 10;
+		if (containerWidth <= 0)
+			return;
+
+		class Typesetter
+		{
+		public:
+			Typesetter(int padding, int lineHeight) :
+				m_padding(padding), m_lineHeight(lineHeight)
+			{
+				m_curPos.set(padding, padding);
+			}
+
+			void moveOn(int w)
+			{
+				m_curPos.xPlus(w);
+			}
+
+			void nextLine()
+			{
+				const int kLineSpacing = 5;
+				m_curPos.yPlus(m_lineHeight + kLineSpacing);
+				m_curPos.x(m_padding);
+			}
+
+			Point curPos() const { return m_curPos; }
+
+		private:
+			int m_padding = 0;
+			int m_lineHeight = 0;
+			Point m_curPos;
+		};
+
+		Typesetter typesetter(kContainerPadding, lineHeight);
 
 		for (auto& line : m_layoutContent) {
 			for (auto& ctrl : line) {
-				ctrl->init(m_hwnd, &m_util, lineHeight);
+				ctrl->init(m_hwnd, &m_guiHelper, lineHeight);
 			}
 
 			int total_width = 0;
 			for (auto& ctrl : line) {
 				if (ctrl->layoutStyle() != Layout::Style::Fill)
-					total_width += ctrl->size().width();
+					total_width += ctrl->totalWidth();
 			}
 
 			auto iter = std::find_if(line.begin(), line.end(),
@@ -565,14 +828,17 @@ private:
 				(*iter)->setWidth(remainingWidth);
 
 			for (auto& ctrl : line) {
-				ctrl->create(curPosX, curPosY);
-				curPosX += ctrl->size().width();
+				ctrl->create(typesetter.curPos());
+				typesetter.moveOn(ctrl->totalWidth());
 			}
-			return;
+
+			typesetter.nextLine();
 		}
 	}
 
-	UiUtil m_util;
+	UiUtil m_uiUtil;
+	GuiHelper m_guiHelper;
+
 	ATL::CStdCallThunk m_thunk;
 	HWND m_hwnd = NULL;
 	WNDPROC m_defaultWndProc = NULL;
@@ -583,10 +849,9 @@ private:
 	std::vector<std::unique_ptr<BaseCtrl>> m_resGuard;
 
 	// events
+	std::function<void(const Window&)> m_eventInit;
 	std::function<bool()> m_eventQuit;
 };
-
-
 
 
 template <class T, class... P>
@@ -604,6 +869,7 @@ public:
 		uiConnNum = 3;
 
 		return Window(uiLayout(), {500, 320}, "MCD")
+			.onInit(this, &View::onInit)
 			.onQuit(this, &View::onQuit)
 			.run(showState);
 	}
@@ -614,40 +880,78 @@ private:
 		return {
 			{
 				create<TextCtrl>(Layout::Optimum)->setDefault("URL:"),
-				create<SpacingCtrl>(Layout::Fixed, 4),
-				create<EditCtrl>(Layout::Fill)->bind(&uiUrl),
+				create<EditCtrl>(Layout::Fill)->bindModel(&uiUrl),
+				create<HyperlinkCtrl>(Layout::Optimum)
+					->setDefault("Clear")
+					->onClick(this, &View::onClearUrl),
 			},
 			{
 				create<TextCtrl>(Layout::Optimum)->setDefault("Save To:"),
-				create<EditCtrl>(Layout::Fill)->bind(&uiUrl),
-				create<SpacingCtrl>(Layout::Fixed, 20),
-				create<ButtonCtrl>(Layout::Optimum)
-					->setDefault("Select Folder...")
+				create<TextCtrl>(Layout::Fill)
+					->bindModel(&uiSavingPath)->setEndWithEllipsis(),
+				create<HyperlinkCtrl>(Layout::Optimum)
+					->setDefault("Select")
 					->onClick(this, &View::onSelectFolder),
+				create<HyperlinkCtrl>(Layout::Optimum)
+					->setDefault("Reveal")
+					->onClick(this, &View::onRevealFolder),
 			},
 			{
 				create<SpacingCtrl>(Layout::Fill),
 				create<TextCtrl>(Layout::Optimum)->setDefault("Connections:"),
-				create<NumberCtrl>(Layout::Optimum)->bind(&uiConnNum),
+				create<EditNumCtrl>(Layout::Optimum)->bindModel(&uiConnNum),
+				create<UpDownCtrl>(Layout::Optimum)
+					->onChanged(this, &View::onConnectionsChanged),
+				create<SpacingCtrl>(Layout::Fixed, 20),
 				create<ButtonCtrl>(Layout::Optimum)
 					->setDefault("Download")
 					->onClick(this, &View::onDownload),
-			},
+			}
 		};
+	}
+
+	void onInit(const Window& win)
+	{
+		cpUtil = UiUtil(win.hwnd());
+	}
+
+	void onClearUrl()
+	{
+		uiUrl = "";
+	}
+
+	void onConnectionsChanged(bool upOrDown)
+	{
+		int value = uiConnNum + 1 * (upOrDown ? 1 : -1);
+		if (value < 0)
+			value = 0;
+
+		uiConnNum = value;
+	}
+
+	void onRevealFolder()
+	{
+		if (uiSavingPath.get().size())
+			cpUtil.revealPath(uiSavingPath);
+	}
+
+	void onSelectFolder()
+	{
+		uiSavingPath = cpUtil.browseForFolder();
 	}
 
 public:
 	// components
-	UiState uiState;
-	UiMessage uiMessage;
+	UiState cpState;
+	UiUtil cpUtil;
 
 	// models
 	UiBinding<std::string> uiUrl;
+	UiBinding<std::string> uiSavingPath;
 	UiBinding<int> uiConnNum;
 
 	// methods
 	virtual bool onQuit() = 0;
-	virtual void onSelectFolder() = 0;
 	virtual void onDownload() = 0;
 
 	HttpConfig httpConfig()

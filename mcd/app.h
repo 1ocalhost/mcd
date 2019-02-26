@@ -21,27 +21,21 @@ class App : public View
 private:
 	bool onQuit() override
 	{
-		return uiMessage.ask("Quit?", false);
-	}
-
-	void onSelectFolder() override
-	{
-		uiMessage.info("onSelectFolder");
+		return cpUtil.ask("Quit?", false);
 	}
 
 	void onDownload() override
 	{
-		showError(InternalError::assertFailed());
+		uiUrl = (uiUrl.get() + StringUtil::toString(uiConnNum));
 		return;
 
+		//Result r = startDownload(uiUrl, uiConnNum, httpConfig());
 
-		Result r = startDownload(uiUrl, uiConnNum, httpConfig());
+		//if (r.failed()) {
+		//	showError(r);
+		//}
 
-		if (r.failed()) {
-			showError(r);
-		}
-
-		uiState.update(r.ok() ? UiState::Working : UiState::Initial);
+		//cpState.update(r.ok() ? UiState::Working : UiState::Initial);
 	}
 
 	void showError(const Result& r)
@@ -50,7 +44,7 @@ private:
 		ss << "Error: " << r.space() << "." << r.code();
 		ss << std::endl << uiUrl.get();
 
-		uiMessage.info(ss.str());
+		cpUtil.info(ss.str());
 	}
 
 	static Result checkUrlSupportRange(bool *support, ConStrRef url,

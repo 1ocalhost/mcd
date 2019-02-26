@@ -1,4 +1,6 @@
 #pragma once
+#define NOMINMAX
+
 #include <Windows.h>
 #include <shlwapi.h>
 
@@ -19,6 +21,7 @@
 #define GB64(value) (MB(value ## ull) * 1024)
 
 #define unless(x) if (!(x))
+#define UNUSED UNREFERENCED_PARAMETER
 
 
 namespace base
@@ -141,9 +144,12 @@ inline void escapeChar(std::string* str)
 	}
 }
 
+template <class T>
+T toLower(T x) { return (T)::tolower((T)x); }
+
 inline std::string& toLower(std::string* str)
 {
-	std::transform(str->begin(), str->end(), str->begin(), ::tolower);
+	std::transform(str->begin(), str->end(), str->begin(), toLower<char>);
 	return *str;
 }
 
@@ -157,6 +163,28 @@ inline bool iEquals(ConStrRef a, ConStrRef b)
 {
 	return std::equal(a.begin(), a.end(), b.begin(), b.end(),
 		[](char x, char y) { return ::tolower(x) == ::tolower(y); });
+}
+
+inline std::string toString(int n)
+{
+	std::stringstream ss;
+	ss << n;
+	return ss.str();
+}
+
+inline bool toNumber(ConStrRef str, unsigned long* number)
+{
+	if (str.empty())
+		return false;
+
+	try {
+		*number = std::stoul(str);
+	}
+	catch (...) {
+		return false;
+	}
+
+	return true;
 }
 
 } // namespace StringUtil
@@ -343,6 +371,61 @@ struct BinaryData
 	static const size_t kBufferSize = KB(2);
 	BYTE buffer[kBufferSize];
 	DWORD size;
+};
+
+class Size
+{
+public:
+	Size() : Size(0, 0) {}
+	Size(int w, int h) { set(w, h); }
+
+	int width() const { return m_width; }
+	int height() const { return m_height; }
+
+	void width(int w) { m_width = w; }
+	void height(int h) { m_height = h; }
+
+	void set(int w, int h)
+	{
+		m_width = w;
+		m_height = h;
+	}
+
+	Size operator +(Size rhs) const
+	{
+		return Size(width() + rhs.width(),
+			height() + rhs.height());
+	}
+
+private:
+	int m_width = 0;
+	int m_height = 0;
+};
+
+class Point
+{
+public:
+	Point() : Point(0, 0) {}
+	Point(int x, int y) { set(x, y); }
+
+	int x() const { return m_x; }
+	int y() const { return m_y; }
+
+	void x(int x) { m_x = x; }
+	void y(int y) { m_y = y; }
+
+	void xPlus(int n) { m_x += n; }
+	void yPlus(int n) { m_y += n; }
+
+	void set(int x, int y)
+	{
+		m_x = x;
+		m_y = y;
+	}
+
+private:
+	int m_x = 0;
+	int m_y = 0;
 };
 
 } // namespace base
