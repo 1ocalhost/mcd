@@ -1,20 +1,8 @@
 #pragma once
-#include "http.h"
+#include "network/http.h"
 #include "view.h"
 
-
-namespace app
-{
-
-using namespace	view;
-
-
-class DlWorker
-{
-
-};
-
-
+BEGIN_NAMESPACE_MCD
 
 class App : public View
 {
@@ -26,7 +14,7 @@ private:
 
 	void onDownload() override
 	{
-		uiUrl = (uiUrl.get() + StringUtil::toString(uiConnNum));
+		uiUrl = (uiUrl.get() + toString(uiConnNum));
 		return;
 
 		//Result r = startDownload(uiUrl, uiConnNum, httpConfig());
@@ -79,4 +67,4 @@ private:
 	}
 };
 
-} // namespace app
+END_NAMESPACE_MCD

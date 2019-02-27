@@ -1,6 +1,5 @@
 #pragma once
-#include "guard.h"
-
+#include "../infra/guard.h"
 
 #define _must_or_return_winhttp_error(result, ...) { \
 	DWORD err = GetLastError(); \
@@ -8,10 +7,7 @@
 		return Result("winhttp", err); \
 }
 
-
-namespace httpapi {
-
-using StringUtil::u8to16;
+BEGIN_NAMESPACE_MCD
 
 typedef std::vector<std::string> RequestHeaders;
 
@@ -139,13 +135,13 @@ inline Result connect
 	_must_or_return_winhttp_error(connect.get(), url);
 
 	ResGuard::WinHttp request = openRequest(
-		connect, verb, url_.path(), url_.overSSL());
-	_must_or_return_winhttp_error(request, url);
+		connect.get(), verb, url_.path(), url_.overSSL());
+	_must_or_return_winhttp_error(request.get(), url);
 
-	_call(addRequestHeaders(request, headers));
-	_call(sendRequest(request));
+	_call(addRequestHeaders(request.get(), headers));
+	_call(sendRequest(request.get()));
 
-	*result = HttpConnect(connect.take(), request.take());
+	*result = HttpConnect(connect.release(), request.release());
 	return {};
 }
 
@@ -197,7 +193,7 @@ inline Result queryRawResponseHeaders(
 
 	r = queryHeaders(conn.req(), buffer, &headerSize);
 	_must_or_return_winhttp_error(r);
-	*rawHeaders = StringUtil::u16to8((PCWSTR)buffer);
+	*rawHeaders = u16to8((PCWSTR)buffer);
 	_must(rawHeaders->size());
 
 	return {};
@@ -211,6 +207,4 @@ inline Result readData(const HttpConnect& conn, BinaryData* data)
 	return {};
 }
 
-} // namespace httpapi
-
-using namespace httpapi;
+END_NAMESPACE_MCD

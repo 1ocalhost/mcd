@@ -1,9 +1,8 @@
 #pragma once
 #include "base.h"
+#include <assert.h>
 
-
-namespace ward
-{
+BEGIN_NAMESPACE_MCD
 
 class Result
 {
@@ -81,7 +80,7 @@ public:
 		if (validWrapper)
 			str.push_back(m_wrapper[1]);
 
-		StringUtil::escapeChar(&str);
+		escapeChar(&str);
 		return str;
 	}
 
@@ -348,7 +347,4 @@ private:
 		return r; \
 }
 
-
-} // namespace ward
-
-using namespace ward;
+END_NAMESPACE_MCD

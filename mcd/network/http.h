@@ -1,9 +1,7 @@
 #pragma once
 #include "http_api.h"
 
-
-namespace
-{
+BEGIN_NAMESPACE_MCD
 
 class HttpConfig : public IMetaViewer
 {
@@ -37,8 +35,8 @@ public:
 	bool hasHeader(ConStrRef name) const
 	{
 		for (auto& item : m_requestHeaders) {
-			const auto& r = StringUtil::split(item, ":");
-			if (StringUtil::iEquals(r[0], name)) {
+			const auto& r = split(item, ":");
+			if (iEquals(r[0], name)) {
 				return true;
 			}
 		}
@@ -119,7 +117,7 @@ public:
 	// header names are not case sensitive (RFC-2616)
 	const HeaderValues& operator [](const std::string& key) const
 	{
-		auto result = m_headers.find(StringUtil::toLower(key));
+		auto result = m_headers.find(toLower(key));
 		if (result == m_headers.end())
 			return m_headerNotExists;
 
@@ -151,7 +149,7 @@ public:
 private:
 	void parseRawHeader(const std::string& rawHeaders)
 	{
-		auto headerLines = StringUtil::split(rawHeaders, "\r\n", true);
+		auto headerLines = split(rawHeaders, "\r\n", true);
 		if (headerLines.size())
 			headerLines[0].clear();
 
@@ -167,7 +165,7 @@ private:
 
 	void addNewHeader(const StringParser::KeyValue& parser)
 	{
-		std::string lowerKey = StringUtil::toLower(parser.key());
+		std::string lowerKey = toLower(parser.key());
 		auto& mapKey = m_headers[lowerKey];
 		mapKey.originalKey = parser.key();
 		mapKey.values.push_back(parser.value());
@@ -183,7 +181,7 @@ private:
 
 		unsigned long lengthNumber = 0;
 		const std::string& length = header.values[0];
-		bool r = StringUtil::toNumber(length, &lengthNumber);
+		bool r = toNumber(length, &lengthNumber);
 
 		_must_or_return(InternalError::invalidInput, r, length);
 		_must_or_return(FeatureError::httpBodyOver2GB,
@@ -356,4 +354,4 @@ public:
 	}
 };
 
-} // namespace
+END_NAMESPACE_MCD

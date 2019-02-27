@@ -119,12 +119,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="app.h" />
-    <ClInclude Include="base.h" />
-    <ClInclude Include="guard.h" />
-    <ClInclude Include="http.h" />
-    <ClInclude Include="http_api.h" />
+    <ClInclude Include="infra\base.h" />
+    <ClInclude Include="infra\guard.h" />
+    <ClInclude Include="infra\ward.h" />
+    <ClInclude Include="network\http.h" />
+    <ClInclude Include="network\http_api.h" />
+    <ClInclude Include="ui\control.h" />
+    <ClInclude Include="ui\progress_bar.h" />
+    <ClInclude Include="ui\window.h" />
     <ClInclude Include="view.h" />
-    <ClInclude Include="ward.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

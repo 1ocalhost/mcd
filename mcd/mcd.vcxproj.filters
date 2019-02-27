@@ -13,6 +13,15 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Header Files\network">
+      <UniqueIdentifier>{6d73f84e-4569-4687-ace0-36b9bef30355}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\ui">
+      <UniqueIdentifier>{7d2e1948-22a8-437f-8e8a-3a6afcd4288d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\infra">
+      <UniqueIdentifier>{9aed8770-e150-4ef9-98b8-e03be3479ac2}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -20,26 +29,35 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="base.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="network\http_api.h">
+      <Filter>Header Files\network</Filter>
     </ClInclude>
-    <ClInclude Include="http.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="http_api.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ward.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="guard.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="network\http.h">
+      <Filter>Header Files\network</Filter>
     </ClInclude>
     <ClInclude Include="app.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="view.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\window.h">
+      <Filter>Header Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\control.h">
+      <Filter>Header Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\progress_bar.h">
+      <Filter>Header Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="infra\base.h">
+      <Filter>Header Files\infra</Filter>
+    </ClInclude>
+    <ClInclude Include="infra\guard.h">
+      <Filter>Header Files\infra</Filter>
+    </ClInclude>
+    <ClInclude Include="infra\ward.h">
+      <Filter>Header Files\infra</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

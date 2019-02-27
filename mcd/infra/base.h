@@ -23,9 +23,10 @@
 #define unless(x) if (!(x))
 #define UNUSED UNREFERENCED_PARAMETER
 
+#define BEGIN_NAMESPACE_MCD namespace mcd {
+#define END_NAMESPACE_MCD }
 
-namespace base
-{
+BEGIN_NAMESPACE_MCD
 
 inline bool debugMode()
 {
@@ -35,7 +36,6 @@ inline bool debugMode()
 	return false;
 #endif
 }
-
 
 template <class T>
 inline bool inRange(T v, T begin, T end)
@@ -447,6 +447,6 @@ private:
 	int m_y = 0;
 };
 
-} // namespace base
+END_NAMESPACE_MCD
 
-using namespace base;
+using namespace mcd::StringUtil;

@@ -23,5 +23,5 @@ int WINAPI WinMain(
 	LPSTR,
 	int nCmdShow)
 {
-	return app::App().run(nCmdShow);
+	return mcd::App().run(nCmdShow);
 }
