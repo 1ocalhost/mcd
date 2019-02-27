@@ -28,6 +28,16 @@ public:
 		SetWindowText(hwnd(), StringUtil::u8to16(text));
 	}
 
+	LRESULT sendMessage(UINT msg, WPARAM wParam = 0, LPARAM lParam = 0)
+	{
+		return SendMessage(hwnd(), msg, wParam, lParam);
+	}
+
+	void setEnabled(bool enabled = true)
+	{
+		EnableWindow(hwnd(), enabled ? TRUE : FALSE);
+	}
+
 private:
 	HWND m_hwnd = NULL;
 };
@@ -236,10 +246,18 @@ public:
 	int layoutWidth() const { return m_layoutWidth; }
 	Size size() const { return m_size; }
 	int totalWidth() const { return size().width() + m_MarginRight; }
+	Point createdPos() const { return m_createdPos; }
+	BaseCtrl* following() const { return m_following; }
 
 	void setSize(const Size& s) { m_size = s; }
 	void setWidth(int width) { m_size.width(width); }
 	void setHeight(int height) { m_size.height(height); }
+
+	BaseCtrl* follow(BaseCtrl* who)
+	{
+		m_following = who;
+		return this;
+	}
 
 	BaseCtrl* setMarginRight(int r)
 	{
@@ -261,6 +279,7 @@ public:
 		PCWSTR typeName, ConStrRef title,
 		DWORD style = 0, DWORD exStyle = 0)
 	{
+		m_createdPos = pos;
 		int offsetY = (m_lineHeight - size().height()) / 2;
 		setHwnd(CreateWindowEx(
 			exStyle,
@@ -289,6 +308,9 @@ private:
 	int m_layoutWidth = 0;
 	int m_MarginRight = 0;
 	Size m_size;
+
+	Point m_createdPos;
+	BaseCtrl* m_following = nullptr;
 };
 
 class TextCtrl : public BaseCtrl
@@ -351,52 +373,6 @@ private:
 	BindingType m_binding = nullptr;
 };
 
-class EditCtrl : public BaseCtrl
-{
-public:
-	typedef UiBinding<std::string> *BindingType;
-
-	EditCtrl(Layout::Style style, int width = 0) :
-		BaseCtrl(style, width)
-	{
-		setMarginRight(5);
-	}
-
-	EditCtrl* bindModel(BindingType binding)
-	{
-		m_binding = binding;
-		m_binding->subscribe(
-			[=](ConStrRef from, ConStrRef to) {
-			if (from != to && guiText() != to)
-				setGuiText(to);
-		});
-
-		return this;
-	}
-
-	void calcOptimumSize() override
-	{
-		std::string text = m_binding->get() + "wrap";
-		Size size_ = guiHelper()->calcTextSize(text);
-		setWidth(size_.width());
-	}
-
-	void create(Point pos) override
-	{
-		createWindow(pos, L"Edit", *m_binding,
-			ES_AUTOHSCROLL, WS_EX_CLIENTEDGE);
-	}
-
-	void onMessageCommand(WORD eventType) override
-	{
-		if (eventType == EN_CHANGE)
-			m_binding->setDirectly(guiText());
-	}
-
-private:
-	BindingType m_binding = nullptr;
-};
-
 class SpacingCtrl : public BaseCtrl
 {
 public:
@@ -427,6 +403,24 @@ public:
 		return this;
 	}
 
+	ButtonCtrl* onClickFn(std::function<void()> onClick)
+	{
+		m_onClick = onClick;
+		return this;
+	}
+
+	ConStrRef defaultText() const
+	{
+		return m_text;
+	}
+
+	void notifyOnClick()
+	{
+		if (m_onClick)
+			m_onClick();
+	}
+
+private:
 	void calcOptimumSize() override
 	{
 		Size size_ = guiHelper()->calcTextSize(m_text + "wrap");
@@ -435,7 +429,7 @@ public:
 
 	void create(Point pos) override
 	{
-		createWindow(pos, L"Button", m_text, BS_DEFPUSHBUTTON);
+		createWindow(pos, L"Button", m_text);
 	}
 
 	void onMessageCommand(WORD eventType) override
@@ -444,9 +438,140 @@ public:
 			m_onClick();
 	}
 
-private:
 	std::string m_text;
 	std::function<void()> m_onClick;
+};
+
+class CheckBoxCtrl : public ButtonCtrl
+{
+public:
+	typedef UiBinding<bool> *BindingType;
+
+	CheckBoxCtrl(Layout::Style style, int width = 0) :
+		ButtonCtrl(style, width) {}
+
+	CheckBoxCtrl* setDefault(ConStrRef text)
+	{
+		ButtonCtrl::setDefault(text);
+		return this;
+	}
+
+	CheckBoxCtrl* bindModel(BindingType binding)
+	{
+		m_binding = binding;
+		m_binding->subscribe(
+			[=](const int& from, const int& to) {
+			if (from != to)
+				setChecked(to);
+		});
+
+		return this;
+	}
+
+	bool modelValue()
+	{
+		return m_binding && *m_binding;
+	}
+
+	void setChecked(bool checked = true)
+	{
+		WPARAM param = checked ? BST_CHECKED : BST_UNCHECKED;
+		sendMessage(BM_SETCHECK, param);
+	}
+
+	bool checked()
+	{
+		return sendMessage(BM_GETCHECK) == BST_CHECKED;
+	}
+
+	void whenStateUpdated(std::function<void()> todo)
+	{
+		m_whenStateUpdated = todo;
+	}
+
+private:
+	void create(Point pos) override
+	{
+		createWindow(pos, L"Button", defaultText(), BS_AUTOCHECKBOX);
+		if (m_binding)
+			setChecked(*m_binding);
+	}
+
+	void onMessageCommand(WORD eventType) override
+	{
+		if (eventType == BN_CLICKED) {
+			if (m_binding)
+				m_binding->setDirectly(checked());
+			
+			if (m_whenStateUpdated)
+				m_whenStateUpdated();
+
+			notifyOnClick();
+		}
+	}
+
+	BindingType m_binding = nullptr;
+	std::function<void()> m_whenStateUpdated;
+};
+
+class EditCtrl : public BaseCtrl
+{
+public:
+	typedef UiBinding<std::string> *BindingType;
+
+	EditCtrl(Layout::Style style, int width = 0) :
+		BaseCtrl(style, width)
+	{
+		setMarginRight(5);
+	}
+
+	EditCtrl* bindModel(BindingType binding)
+	{
+		m_binding = binding;
+		m_binding->subscribe(
+			[=](ConStrRef from, ConStrRef to) {
+			if (from != to && guiText() != to)
+				setGuiText(to);
+		});
+
+		return this;
+	}
+
+	EditCtrl* bindEnabled(CheckBoxCtrl* ctrl)
+	{
+		m_bindEnabled = ctrl;
+		ctrl->whenStateUpdated([=]() {
+			setEnabled(m_bindEnabled->modelValue());
+		});
+
+		return this;
+	}
+
+	void calcOptimumSize() override
+	{
+		std::string text = m_binding->get() + "wrap";
+		Size size_ = guiHelper()->calcTextSize(text);
+		setWidth(size_.width());
+	}
+
+	void create(Point pos) override
+	{
+		createWindow(pos, L"Edit", *m_binding,
+			ES_AUTOHSCROLL, WS_EX_CLIENTEDGE);
+
+		if (m_bindEnabled)
+			setEnabled(m_bindEnabled->modelValue());
+	}
+
+	void onMessageCommand(WORD eventType) override
+	{
+		if (eventType == EN_CHANGE)
+			m_binding->setDirectly(guiText());
+	}
+
+private:
+	BindingType m_binding = nullptr;
+	CheckBoxCtrl* m_bindEnabled = nullptr;
 };
 
 class HyperlinkCtrl : public BaseCtrl
@@ -468,6 +593,12 @@ public:
 	HyperlinkCtrl* onClick(Obj&& that, Fn&& func)
 	{
 		m_onClick = std::bind(func, that);
+		return this;
+	}
+
+	HyperlinkCtrl* onClickFn(std::function<void()> onClick)
+	{
+		m_onClick = onClick;
 		return this;
 	}
 
@@ -627,6 +758,8 @@ public:
 
 		createControls();
 		m_guiHelper.resetWindowFont(hwnd);
+		if (m_eventAllControlsMade)
+			m_eventAllControlsMade();
 
 		ShowWindow(hwnd, showState);
 		UpdateWindow(hwnd);
@@ -639,10 +772,17 @@ public:
 	}
 
 	template <class Obj, class Fn>
-	Window& onInit(Obj&& that, Fn&& func)
+	Window& onWindowMade(Obj&& that, Fn&& func)
 	{
 		using namespace std::placeholders;
 		m_eventInit = std::bind(func, that, _1);
+		return *this;
+	}
+
+	template <class Obj, class Fn>
+	Window& onAllControlsMade(Obj&& that, Fn&& func)
+	{
+		m_eventAllControlsMade = std::bind(func, that);
 		return *this;
 	}
 
@@ -789,6 +929,11 @@ private:
 				m_curPos.xPlus(w);
 			}
 
+			void moveTo(int x)
+			{
+				m_curPos.x(x);
+			}
+
 			void nextLine()
 			{
 				const int kLineSpacing = 5;
@@ -828,8 +973,17 @@ private:
 				(*iter)->setWidth(remainingWidth);
 
 			for (auto& ctrl : line) {
-				ctrl->create(typesetter.curPos());
-				typesetter.moveOn(ctrl->totalWidth());
+				auto following = ctrl->following();
+				if (following) {
+					int posX = following->createdPos().x();
+					ctrl->setWidth(following->size().width());
+					ctrl->create({posX, typesetter.curPos().y()});
+					typesetter.moveTo(posX + ctrl->totalWidth());
+				}
+				else {
+					ctrl->create(typesetter.curPos());
+					typesetter.moveOn(ctrl->totalWidth());
+				}
 			}
 
 			typesetter.nextLine();
@@ -850,6 +1004,7 @@ private:
 
 	// events
 	std::function<void(const Window&)> m_eventInit;
+	std::function<void()> m_eventAllControlsMade;
 	std::function<bool()> m_eventQuit;
 };
 
@@ -865,25 +1020,51 @@ class View
 public:
 	int run(int showState)
 	{
-		uiUrl = "https://httpbin.org/get";
-		uiConnNum = 3;
+		initModels();
 
 		return Window(uiLayout(), {500, 320}, "MCD")
-			.onInit(this, &View::onInit)
+			.onWindowMade(this, &View::onWindowMade)
+			.onAllControlsMade(this, &View::onAllControlsMade)
 			.onQuit(this, &View::onQuit)
 			.run(showState);
 	}
 
 private:
+	BaseCtrl* createClearButton(UiBinding<std::string>* model)
+	{
+		return create<HyperlinkCtrl>(Layout::Optimum)
+			->setDefault("Clear")
+			->onClickFn(std::bind(
+				[](UiBinding<std::string>* m) { *m = ""; }, model));
+	}
+
+	std::vector<BaseCtrl*> createOptionLine(ConStrRef name,
+		BaseCtrl* following,
+		UiBinding<bool>* modelCheck,
+		UiBinding<std::string>* modelEdit)
+	{
+		CheckBoxCtrl* checkCtrl = create<CheckBoxCtrl>(Layout::Optimum)
+			->setDefault(name)->bindModel(modelCheck);
+
+		BaseCtrl* editCtrl = create<EditCtrl>(Layout::Fill)
+			->bindModel(modelEdit)->bindEnabled(checkCtrl)->follow(following);
+
+		return {checkCtrl, editCtrl, createClearButton(modelEdit)};
+	}
+
 	Layout::Content uiLayout()
 	{
+		CheckBoxCtrl* chkProxyServer = create<CheckBoxCtrl>(Layout::Optimum)
+			->setDefault("HTTP Proxy:")->bindModel(&uiChkProxyServer);
+
+		EditCtrl* editProxyServer = create<EditCtrl>(Layout::Fill)
+			->bindModel(&uiProxyServer)->bindEnabled(chkProxyServer);
+
 		return {
 			{
 				create<TextCtrl>(Layout::Optimum)->setDefault("URL:"),
 				create<EditCtrl>(Layout::Fill)->bindModel(&uiUrl),
-				create<HyperlinkCtrl>(Layout::Optimum)
-					->setDefault("Clear")
-					->onClick(this, &View::onClearUrl),
+				createClearButton(&uiUrl)
 			},
 			{
 				create<TextCtrl>(Layout::Optimum)->setDefault("Save To:"),
@@ -894,8 +1075,22 @@ private:
 					->onClick(this, &View::onSelectFolder),
 				create<HyperlinkCtrl>(Layout::Optimum)
 					->setDefault("Reveal")
-					->onClick(this, &View::onRevealFolder),
+					->onClick(this, &View::onRevealFolder)
 			},
+			{
+				chkProxyServer,
+				editProxyServer,
+				createClearButton(&uiProxyServer),
+				create<SpacingCtrl>(Layout::Fixed, 100)
+			},
+			createOptionLine("User-Agent:",
+				editProxyServer,
+				&uiChkUserAgent,
+				&uiUserAgent),
+			createOptionLine("Cookie:",
+				editProxyServer,
+				&uiChkCookie,
+				&uiCookie),
 			{
 				create<SpacingCtrl>(Layout::Fill),
 				create<TextCtrl>(Layout::Optimum)->setDefault("Connections:"),
@@ -905,19 +1100,30 @@ private:
 				create<SpacingCtrl>(Layout::Fixed, 20),
 				create<ButtonCtrl>(Layout::Optimum)
 					->setDefault("Download")
-					->onClick(this, &View::onDownload),
+					->onClick(this, &View::onDownload)
 			}
 		};
 	}
 
-	void onInit(const Window& win)
+	void initModels()
+	{
+		uiUrl = "https://httpbin.org/get";
+		uiConnNum = 3;
+		uiProxyServer = "127.0.0.1:1080";
+
+		uiChkProxyServer = false;
+		uiChkUserAgent = true;
+		uiChkCookie = false;
+	}
+
+	void onWindowMade(const Window& win)
 	{
 		cpUtil = UiUtil(win.hwnd());
 	}
 
-	void onClearUrl()
+	void onAllControlsMade()
 	{
-		uiUrl = "";
+
 	}
 
 	void onConnectionsChanged(bool upOrDown)
@@ -949,6 +1155,14 @@ public:
 	UiBinding<std::string> uiUrl;
 	UiBinding<std::string> uiSavingPath;
 	UiBinding<int> uiConnNum;
+
+	UiBinding<std::string> uiProxyServer;
+	UiBinding<std::string> uiUserAgent;
+	UiBinding<std::string> uiCookie;
+
+	UiBinding<bool> uiChkProxyServer;
+	UiBinding<bool> uiChkUserAgent;
+	UiBinding<bool> uiChkCookie;
 
 	// methods
 	virtual bool onQuit() = 0;
