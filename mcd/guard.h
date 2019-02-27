@@ -63,6 +63,11 @@ public:
 	WinHttp(HINTERNET handle) :
 		ResGuardBase<HINTERNET>(handle, deleter) {}
 
+	void operator= (HINTERNET handle)
+	{
+		this->reset(handle);
+	}
+
 	static void deleter(HINTERNET handle)
 	{
 		if (handle)
@@ -70,18 +75,27 @@ public:
 	}
 };
 
-class Font : public ResGuardBase<HFONT>
+template <class T>
+class GdiObj : public ResGuardBase<T>
 {
 public:
-	Font(HFONT handle = NULL) :
-		ResGuardBase<HFONT>(handle, deleter) {}
+	GdiObj(T handle = NULL) :
+		ResGuardBase<T>(handle, deleter) {}
 
-	static void deleter(HINTERNET handle)
+	void operator= (T handle)
+	{
+		this->reset(handle);
+	}
+
+	static void deleter(T handle)
 	{
 		if (handle)
 			DeleteObject(handle);
 	}
 };
+
+typedef GdiObj<HFONT> GdiFont;
+typedef GdiObj<HBRUSH> GdiBrush;
 
 } // namespace ResGuard
 

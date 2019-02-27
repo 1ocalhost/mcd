@@ -355,6 +355,25 @@ private:
 
 } // namespace StringParser
 
+template <class T>
+class MaxMinValue
+{
+public:
+	MaxMinValue(std::initializer_list<T> args)
+	{
+		m_max = *std::max_element(args.begin(), args.end());
+		m_min = *std::min_element(args.begin(), args.end());
+	}
+
+	T max() const { return m_max; }
+	T min() const { return m_min; }
+
+private:
+	T m_max;
+	T m_min;
+};
+
+
 class Bool
 {
 public:

@@ -2,22 +2,182 @@
 #include "guard.h"
 #include <atlbase.h>
 #include <atlstdthunk.h>
-//#include <CommCtrl.h>
-#include <windowsx.h>
 #include <Shlobj.h> // SHBrowseForFolder
+
 
 namespace view
 {
 
+class GuiRandomProgressCtrl
+{
+public:
+	class Palette
+	{
+	public:
+		Palette()
+		{
+			m_border = CreateSolidBrush(RGB(85, 123, 21));
+			m_background = CreateSolidBrush(RGB(205, 244, 181));
+			m_done = CreateSolidBrush(RGB(113, 164, 28));
+		}
+
+		HBRUSH border() const { return m_border; }
+		HBRUSH background() const { return m_background; }
+		HBRUSH done() const { return m_done; }
+
+	private:
+		ResGuard::GdiBrush m_border;
+		ResGuard::GdiBrush m_background;
+		ResGuard::GdiBrush m_done;
+	};
+
+	static PCWSTR className()
+	{
+		return L"GuiRandomProgressCtrl";
+	}
+
+	static void registerClass()
+	{
+		WNDCLASS wc = {0};
+		wc.style = CS_GLOBALCLASS | CS_HREDRAW | CS_VREDRAW;
+		wc.lpfnWndProc = ctrlProc;
+		wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+		wc.lpszClassName = className();
+		RegisterClass(&wc);
+
+		palette();
+	}
+
+	static void unregisterClass()
+	{
+		UnregisterClass(className(), NULL);
+	}
+
+	static const Palette& palette()
+	{
+		static Palette p;
+		return p;
+	}
+
+private:
+	static LRESULT CALLBACK ctrlProc(
+		HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+	{
+		switch (uMsg) {
+		case WM_PAINT:
+			customPaint(hwnd);
+			return 0;
+		}
+		return DefWindowProc(hwnd, uMsg, wParam, lParam);
+	}
+
+	static void customPaint(HWND hwnd)
+	{
+
+		class Painter
+		{
+		public:
+			Painter(HDC hdc)
+			{
+				m_hdc = hdc;
+			}
+
+			void drawBorder(std::initializer_list<POINT> points)
+			{
+				HBRUSH color = palette().border();
+				auto it = points.begin();
+				POINT pre = *it;
+				for (++it; it != points.end(); ++it) {
+					drawLine(pre, *it, color);
+					pre = *it;
+				}
+
+				drawLine(pre, *points.begin(), color);
+			}
+
+			void drawBackground(RECT rect)
+			{
+				/////////////////////////////
+				LONG width = rect.right - 2;
+				LONG height = rect.bottom - 2;
+
+				HBITMAP bmp = CreateCompatibleBitmap(
+					m_hdc, width, height); // DeleteObject
+				HDC hdc = CreateCompatibleDC(m_hdc); // DeleteObject
+				SelectObject(hdc, bmp);
+
+				//rect.left += 1;
+				//rect.top += 1;
+				rect.right = width;
+				rect.bottom = height;
+				FillRect(hdc, &rect, palette().background());
+
+
+				rect.left = 50;
+				rect.right = 100;
+				FillRect(hdc, &rect, palette().done());
+
+				rect.left = 140;
+				rect.right = 170;
+				FillRect(hdc, &rect, palette().done());
+
+
+				BitBlt(m_hdc, 1, 1, width, height, hdc, 0, 0, SRCCOPY);
+			}
+
+		private:
+			void drawLine(POINT a, POINT b, HBRUSH color)
+			{
+				if (a.y == b.y) {
+					MaxMinValue<LONG> v = {a.x, b.x};
+					RECT rect = {v.min()+1, a.y, v.max(), a.y+1};
+					FillRect(m_hdc, &rect, color);
+				}
+				else if (a.x == b.x) {
+					MaxMinValue<LONG> v = { a.y, b.y };
+					RECT rect = {a.x, v.min()+1, a.x+1, v.max()};
+					FillRect(m_hdc, &rect, color);
+				}
+			}
+
+			HDC m_hdc;
+		};
+
+
+		PAINTSTRUCT ps;
+		Painter painter(BeginPaint(hwnd, &ps));
+
+		RECT rect;
+		GetClientRect(hwnd, &rect);
+
+		LONG right = rect.right - 1;
+		LONG bottom = rect.bottom - 1;
+		painter.drawBorder({
+			{0, 0},
+			{right, 0},
+			{right, bottom},
+			{0, bottom}
+		});
+
+		painter.drawBackground(rect);
+
+		EndPaint(hwnd, &ps);
+	}
+
+
+};
+
 class GuiWindow
 {
 public:
+	GuiWindow(HWND hwnd = NULL) : m_hwnd(hwnd) {}
+
 	HWND hwnd() const { return m_hwnd; }
 	void setHwnd(HWND hwnd) { m_hwnd = hwnd; }
 
 	std::string guiText()
 	{
-		const int kSize = KB(5);
+		const int kSize = KB(4);
 		std::unique_ptr<WCHAR> guard(new WCHAR[kSize]());
 		GetWindowText(hwnd(), guard.get(), kSize);
 		return StringUtil::u16to8(guard.get());
@@ -164,7 +324,7 @@ private:
 	}
 
 	HWND m_hwnd = NULL;
-	ResGuard::Font m_uiFont;
+	ResGuard::GdiFont m_uiFont;
 };
 
 class BaseCtrl;
@@ -245,6 +405,7 @@ public:
 	Layout::Style layoutStyle() const { return m_layoutStyle; }
 	int layoutWidth() const { return m_layoutWidth; }
 	Size size() const { return m_size; }
+	int lineHeight() const { return m_lineHeight; }
 	int totalWidth() const { return size().width() + m_MarginRight; }
 	Point createdPos() const { return m_createdPos; }
 	BaseCtrl* following() const { return m_following; }
@@ -371,6 +532,52 @@ private:
 	DWORD m_endEllipsisflag = 0;
 	UiBinding<std::string> m_default;
 	BindingType m_binding = nullptr;
+};
+
+class RandomProgressCtrl : public BaseCtrl
+{
+public:
+	//RandomProgressCtrl ModelType;
+	//typedef UiBinding<std::string> *BindingType;
+
+
+	RandomProgressCtrl(Layout::Style style, int width = 0) :
+		BaseCtrl(style, width)
+	{
+	}
+
+	//TextCtrl* setDefault(ConStrRef text)
+	//{
+	//	m_default = text;
+	//	return bindModel(&m_default);
+	//}
+
+	//TextCtrl* bindModel(BindingType binding)
+	//{
+	//	m_binding = binding;
+	//	m_binding->subscribe(
+	//		[=](ConStrRef from, ConStrRef to) {
+	//		if (from != to && guiText() != to)
+	//			setGuiText(to);
+	//	});
+
+	//	return this;
+	//}
+
+	void calcOptimumSize() override
+	{
+		setHeight(8);
+	}
+
+	void create(Point pos) override
+	{
+		createWindow(pos, GuiRandomProgressCtrl::className(), "");
+		SetWindowLongPtr(hwnd(), GWLP_USERDATA, (LONG_PTR)L"Little Min");
+	}
+
+private:
+	//UiBinding<std::string> m_default;
+	//BindingType m_binding = nullptr;
 };
 
 class SpacingCtrl : public BaseCtrl
@@ -1018,6 +1225,16 @@ T* create(P... args)
 class View
 {
 public:
+	View()
+	{
+		GuiRandomProgressCtrl::registerClass();
+	}
+
+	~View()
+	{
+		GuiRandomProgressCtrl::unregisterClass();
+	}
+
 	int run(int showState)
 	{
 		initModels();
@@ -1101,6 +1318,9 @@ private:
 				create<ButtonCtrl>(Layout::Optimum)
 					->setDefault("Download")
 					->onClick(this, &View::onDownload)
+			},
+			{
+				create<RandomProgressCtrl>(Layout::Fill)
 			}
 		};
 	}
