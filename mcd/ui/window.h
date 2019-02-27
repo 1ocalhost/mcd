@@ -5,12 +5,39 @@
 
 BEGIN_NAMESPACE_MCD
 
-class Typesetter123
+class Typesetter
 {
+	class LineMode
+	{
+	public:
+		LineMode(int lineHeight) :
+			m_lineHeight(lineHeight)
+		{
+			m_padding = Typesetter::containerPadding();
+			m_curPos.set(m_padding, m_padding);
+		}
+
+		Point curPos() const { return m_curPos; }
+		void moveOn(int w) { m_curPos.xPlus(w); }
+		void moveTo(int x) { m_curPos.x(x); }
+
+		void nextLine()
+		{
+			const int kLineSpacing = 5;
+			m_curPos.yPlus(m_lineHeight + kLineSpacing);
+			m_curPos.x(m_padding);
+		}
+
+	private:
+		int m_padding = 0;
+		int m_lineHeight = 0;
+		Point m_curPos;
+	};
+
 public:
 	typedef std::vector<std::unique_ptr<BaseCtrl>> ContentHost;
 
-	Typesetter123(const Layout::Content& content) :
+	Typesetter(const Layout::Content& content) :
 		m_layoutContent(content)
 	{
 		for (auto& line : content) {
@@ -25,93 +52,78 @@ public:
 		return m_resGuard;
 	}
 
-	bool parse(WindowBase* parentWindow, RECT clientRect, int lineHeight)
+	static int containerPadding()
 	{
-		const int kContainerPadding = 10;
+		return 20;
+	}
 
-		int containerWidth = clientRect.right - kContainerPadding * 2;
+	static int lineHeight(WindowBase* win)
+	{
+		return win->calcTextSize("a").height() + 8;
+	}
+
+	bool parse(WindowBase* parent)
+	{
+		int lineHeight_ = lineHeight(parent);
+		int containerWidth = parent->clientSize().width()
+			- containerPadding() * 2;
+
 		if (containerWidth <= 0)
 			return false;
 
-		class Typesetter
-		{
-		public:
-			Typesetter(int padding, int lineHeight) :
-				m_padding(padding), m_lineHeight(lineHeight)
-			{
-				m_curPos.set(padding, padding);
-			}
-
-			void moveOn(int w)
-			{
-				m_curPos.xPlus(w);
-			}
-
-			void moveTo(int x)
-			{
-				m_curPos.x(x);
-			}
-
-			void nextLine()
-			{
-				const int kLineSpacing = 5;
-				m_curPos.yPlus(m_lineHeight + kLineSpacing);
-				m_curPos.x(m_padding);
-			}
-
-			Point curPos() const { return m_curPos; }
-
-		private:
-			int m_padding = 0;
-			int m_lineHeight = 0;
-			Point m_curPos;
-		};
-
-		Typesetter typesetter(kContainerPadding, lineHeight);
-
+		LineMode lineMode(lineHeight_);
 		for (auto& line : m_layoutContent) {
-			for (auto& ctrl : line) {
-				ctrl->init(parentWindow, lineHeight);
-			}
+			for (auto& ctrl : line)
+				ctrl->init(parent, lineHeight_);
 
-			int total_width = 0;
-			for (auto& ctrl : line) {
-				if (ctrl->layoutStyle() != Layout::Style::Fill)
-					total_width += ctrl->totalWidth();
-			}
-
-			auto iter = std::find_if(line.begin(), line.end(),
-				[](BaseCtrl* x) -> bool {
-				return x->layoutStyle() == Layout::Style::Fill;
-			}
-			);
-
-			int remainingWidth = containerWidth - total_width;
-			if (iter != line.end() && remainingWidth > 0)
-				(*iter)->setWidth(remainingWidth);
-
-			for (auto& ctrl : line) {
-				auto following = ctrl->following();
-				if (following) {
-					int posX = following->createdPos().x();
-					ctrl->setWidth(following->size().width());
-					ctrl->create({ posX, typesetter.curPos().y() });
-					typesetter.moveTo(posX + ctrl->totalWidth());
-				}
-				else {
-					ctrl->create(typesetter.curPos());
-					typesetter.moveOn(ctrl->totalWidth());
-				}
-			}
-
-			typesetter.nextLine();
+			findAndFillWidth(line, containerWidth);
+			createInlineControls(line, &lineMode);
+			lineMode.nextLine();
 		}
-
 
 		return true;
 	}
 
 private:
+	void findAndFillWidth(
+		const Layout::ContentLine& line,
+		int containerWidth)
+	{
+		int total_width = 0;
+		for (auto& ctrl : line) {
+			if (ctrl->layoutStyle() != Layout::Style::Fill)
+				total_width += ctrl->totalWidth();
+		}
+
+		auto iter = std::find_if(line.begin(), line.end(),
+			[](BaseCtrl* x) -> bool {
+			return x->layoutStyle() == Layout::Style::Fill;
+		});
+
+		int remainingWidth = containerWidth - total_width;
+		if (iter != line.end() && remainingWidth > 0)
+			(*iter)->setWidth(remainingWidth);
+	}
+
+	void createInlineControls(
+		const Layout::ContentLine& line,
+		LineMode* lineMode)
+	{
+		for (auto& ctrl : line) {
+			auto following = ctrl->following();
+			if (following) {
+				int posX = following->createdPos().x();
+				ctrl->setWidth(following->size().width());
+				ctrl->create({posX, lineMode->curPos().y()});
+				lineMode->moveTo(posX + ctrl->totalWidth());
+			}
+			else {
+				ctrl->create(lineMode->curPos());
+				lineMode->moveOn(ctrl->totalWidth());
+			}
+		}
+	}
+
 	Layout::Content m_layoutContent;
 	ContentHost m_resGuard;
 };
@@ -276,11 +288,7 @@ private:
 
 	bool createControls()
 	{
-		RECT clientRect = {0};
-		GetClientRect(hwnd(), &clientRect);
-
-		int lineHeight = calcTextSize("a").height() + 8;
-		if (!m_typesetter.parse(this, clientRect, lineHeight))
+		if (!m_typesetter.parse(this))
 			return false;
 
 		initChildUiFont();
@@ -312,7 +320,7 @@ private:
 	ATL::CStdCallThunk m_thunk;
 	WNDPROC m_defaultWndProc = NULL;
 
-	Typesetter123 m_typesetter;
+	Typesetter m_typesetter;
 	ResGuard::GdiFont m_uiFont;
 
 	Size m_windowSize;

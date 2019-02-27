@@ -8,7 +8,8 @@ class BaseCtrl;
 class Layout
 {
 public:
-	typedef std::vector<std::vector<BaseCtrl*>> Content;
+	typedef std::vector<BaseCtrl*> ContentLine;
+	typedef std::vector<ContentLine> Content;
 
 	enum Style {
 		Optimum,
@@ -84,6 +85,13 @@ public:
 	LONG_PTR setWindowLong(int index, LONG_PTR value)
 	{
 		return SetWindowLongPtr(hwnd(), index, value);
+	}
+
+	Size clientSize()
+	{
+		RECT rect = {0};
+		GetClientRect(hwnd(), &rect);
+		return {rect.right, rect.bottom};
 	}
 
 private:
