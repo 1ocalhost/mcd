@@ -144,7 +144,7 @@ public:
 
 	int run(int showState)
 	{
-		GuiRandomProgressCtrl::get(); // initialize
+		GuiRandomProgress::Control::get(); // initialize
 
 		if (!createMainWindow())
 			return -1;

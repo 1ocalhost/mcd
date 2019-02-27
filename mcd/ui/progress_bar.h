@@ -3,49 +3,149 @@
 
 BEGIN_NAMESPACE_MCD
 
-class GuiRandomProgressCtrl
+namespace GuiRandomProgress {
+
+class Palette
 {
 public:
-	typedef GuiRandomProgressCtrl SelfType;
-
-	class Palette
+	static Palette& get()
 	{
-	public:
-		Palette()
-		{
-			m_border = CreateSolidBrush(RGB(85, 123, 21));
-			m_background = CreateSolidBrush(RGB(205, 244, 181));
-			m_done = CreateSolidBrush(RGB(113, 164, 28));
-		}
-
-		HBRUSH border() const { return m_border.get(); }
-		HBRUSH background() const { return m_background.get(); }
-		HBRUSH done() const { return m_done.get(); }
-
-	private:
-		ResGuard::GdiBrush m_border;
-		ResGuard::GdiBrush m_background;
-		ResGuard::GdiBrush m_done;
-	};
-
-	static PCWSTR className()
-	{
-		return L"GuiRandomProgressCtrl";
+		static Palette obj;
+		return obj;
 	}
 
-	static GuiRandomProgressCtrl& get()
+	HBRUSH border() const { return m_border.get(); }
+	HBRUSH background() const { return m_background.get(); }
+	HBRUSH done() const { return m_done.get(); }
+
+private:
+	Palette()
 	{
-		static GuiRandomProgressCtrl ctrl;
-		return ctrl;
+		m_border = CreateSolidBrush(RGB(85, 123, 21));
+		m_background = CreateSolidBrush(RGB(205, 244, 181));
+		m_done = CreateSolidBrush(RGB(113, 164, 28));
 	}
 
-	const Palette& palette() const
+	ResGuard::GdiBrush m_border;
+	ResGuard::GdiBrush m_background;
+	ResGuard::GdiBrush m_done;
+};
+
+class MemoryDC
+{
+public:
+	MemoryDC(HDC dst, Size size) : m_dst(dst), m_size(size)
 	{
-		return m_palette;
+		m_bmp = CreateCompatibleBitmap(
+			dst, size.width(), size.height());
+		m_dc = CreateCompatibleDC(dst);
+		SelectObject(m_dc.get(), m_bmp.get());
+	}
+
+	void fillRect(Point start, Size size, HBRUSH brush)
+	{
+		RECT rect;
+		rect.left = start.x();
+		rect.top = start.y();
+		rect.right = size.width();
+		rect.bottom = size.height();
+		FillRect(m_dc.get(), &rect, brush);
+	}
+
+	void copyToDst(Point start)
+	{
+		BitBlt(m_dst, start.x(), start.y(),
+			m_size.width(), m_size.height(),
+			m_dc.get(), 0, 0, SRCCOPY);
 	}
 
 private:
-	GuiRandomProgressCtrl()
+	HDC m_dst;
+	Size m_size;
+	ResGuard::GdiBitmap m_bmp;
+	ResGuard::GdiDeleteDc m_dc;
+};
+
+class Painter
+{
+public:
+	Painter(HDC hdc)
+	{
+		m_hdc = hdc;
+	}
+
+	void drawBorder(const RECT& rect)
+	{
+		LONG right = rect.right - 1;
+		LONG bottom = rect.bottom - 1;
+		drawBorderByPoints({
+			{0, 0},
+			{right, 0},
+			{right, bottom},
+			{0, bottom}
+		});
+	}
+
+	void drawBackground(const RECT& rect)
+	{
+		Size size = { rect.right - 2, rect.bottom - 2 };
+		MemoryDC mem(m_hdc, size);
+		auto& p = Palette::get();
+
+		mem.fillRect({}, size, p.background());
+		mem.fillRect({50, 0}, {130, size.height()}, p.done());
+		mem.fillRect({132, 0}, {140, size.height()}, p.done());
+		mem.fillRect({200, 0}, {500, size.height()}, p.done());
+		mem.copyToDst({1, 1});
+	}
+
+private:
+	void drawBorderByPoints(std::initializer_list<POINT> points)
+	{
+		HBRUSH color = Palette::get().border();
+		auto it = points.begin();
+		POINT pre = *it;
+		for (++it; it != points.end(); ++it) {
+			drawLine(pre, *it, color);
+			pre = *it;
+		}
+
+		drawLine(pre, *points.begin(), color);
+	}
+
+	void drawLine(POINT a, POINT b, HBRUSH color)
+	{
+		if (a.y == b.y) {
+			MaxMinValue<LONG> v = { a.x, b.x };
+			RECT rect = { v.min() + 1, a.y, v.max(), a.y + 1 };
+			FillRect(m_hdc, &rect, color);
+		}
+		else if (a.x == b.x) {
+			MaxMinValue<LONG> v = { a.y, b.y };
+			RECT rect = { a.x, v.min() + 1, a.x + 1, v.max() };
+			FillRect(m_hdc, &rect, color);
+		}
+	}
+
+	HDC m_hdc;
+};
+
+class Control
+{
+public:
+	static PCWSTR className()
+	{
+		return L"RandomProgressBar";
+	}
+
+	static Control& get()
+	{
+		static Control obj;
+		return obj;
+	}
+
+private:
+	Control()
 	{
 		WNDCLASS wc = { 0 };
 		wc.style = CS_GLOBALCLASS | CS_HREDRAW | CS_VREDRAW;
@@ -55,7 +155,7 @@ private:
 		RegisterClass(&wc);
 	}
 
-	~GuiRandomProgressCtrl()
+	~Control()
 	{
 		UnregisterClass(className(), NULL);
 	}
@@ -74,99 +174,19 @@ private:
 
 	static void customPaint(HWND hwnd)
 	{
-		class Painter
-		{
-		public:
-			Painter(HDC hdc)
-			{
-				m_hdc = hdc;
-			}
-
-			void drawBorder(std::initializer_list<POINT> points)
-			{
-				HBRUSH color = SelfType::get().palette().border();
-				auto it = points.begin();
-				POINT pre = *it;
-				for (++it; it != points.end(); ++it) {
-					drawLine(pre, *it, color);
-					pre = *it;
-				}
-
-				drawLine(pre, *points.begin(), color);
-			}
-
-			void drawBackground(RECT rect)
-			{
-				/////////////////////////////
-				LONG width = rect.right - 2;
-				LONG height = rect.bottom - 2;
-
-				HBITMAP bmp = CreateCompatibleBitmap(
-					m_hdc, width, height); // DeleteObject
-				HDC hdc = CreateCompatibleDC(m_hdc); // DeleteObject
-				SelectObject(hdc, bmp);
-
-				auto& palette = SelfType::get().palette();
-
-				//rect.left += 1;
-				//rect.top += 1;
-				rect.right = width;
-				rect.bottom = height;
-				FillRect(hdc, &rect, palette.background());
-
-
-				rect.left = 50;
-				rect.right = 100;
-				FillRect(hdc, &rect, palette.done());
-
-				rect.left = 140;
-				rect.right = 170;
-				FillRect(hdc, &rect, palette.done());
-
-
-				BitBlt(m_hdc, 1, 1, width, height, hdc, 0, 0, SRCCOPY);
-			}
-
-		private:
-			void drawLine(POINT a, POINT b, HBRUSH color)
-			{
-				if (a.y == b.y) {
-					MaxMinValue<LONG> v = {a.x, b.x};
-					RECT rect = {v.min()+1, a.y, v.max(), a.y+1};
-					FillRect(m_hdc, &rect, color);
-				}
-				else if (a.x == b.x) {
-					MaxMinValue<LONG> v = { a.y, b.y };
-					RECT rect = {a.x, v.min()+1, a.x+1, v.max()};
-					FillRect(m_hdc, &rect, color);
-				}
-			}
-
-			HDC m_hdc;
-		};
-
-
 		PAINTSTRUCT ps;
-		Painter painter(BeginPaint(hwnd, &ps));
+		HDC hdc = BeginPaint(hwnd, &ps);
+		Painter painter(hdc);
 
-		RECT rect;
+		RECT rect = {0};
 		GetClientRect(hwnd, &rect);
-
-		LONG right = rect.right - 1;
-		LONG bottom = rect.bottom - 1;
-		painter.drawBorder({
-			{0, 0},
-			{right, 0},
-			{right, bottom},
-			{0, bottom}
-		});
-
+		painter.drawBorder(rect);
 		painter.drawBackground(rect);
 
 		EndPaint(hwnd, &ps);
 	}
-
-	Palette m_palette;
 };
+
+} // namespace GuiRandomProgress
 
 END_NAMESPACE_MCD

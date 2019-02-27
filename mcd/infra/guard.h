@@ -37,14 +37,29 @@ struct DeleteObjectGuard : public WinBoolDeleterGuard<T>
 
 typedef DeleteObjectGuard<HFONT> GdiFont;
 typedef DeleteObjectGuard<HBRUSH> GdiBrush;
+typedef DeleteObjectGuard<HBITMAP> GdiBitmap;
+typedef DeleteObjectGuard<HDC> GdiDeleteDc;
 
-struct DeleteDcGuard : public WinBoolDeleterGuard<HDC>
+struct GdiReleaseDc
 {
-	DeleteDcGuard(HDC h) :
-		WinBoolDeleterGuard<HDC>(h, DeleteDC) {}
-};
+	GdiReleaseDc(HWND hwnd) : m_hwnd(hwnd)
+	{
+		m_hdc = GetDC(hwnd);
+	}
 
-typedef DeleteDcGuard GdiDc;
+	HDC get() const
+	{
+		return m_hdc;
+	}
+
+	~GdiReleaseDc()
+	{
+		ReleaseDC(m_hwnd, m_hdc);
+	}
+
+	HWND m_hwnd;
+	HDC m_hdc;
+};
 
 
 } // namespace ResGuard

@@ -43,7 +43,7 @@ public:
 		if (!uiFont())
 			return {};
 
-		ResGuard::GdiDc dc = GetDC(hwnd());
+		ResGuard::GdiReleaseDc dc(hwnd());
 		SelectObject(dc.get(), uiFont());
 
 		RECT rect = {0};
@@ -306,11 +306,13 @@ public:
 
 	void create(Point pos) override
 	{
-		createWindow(pos, GuiRandomProgressCtrl::className(), "");
-		SetWindowLongPtr(hwnd(), GWLP_USERDATA, (LONG_PTR)L"Little Min");/// <=
+		const int a = sizeof(char);
+		createWindow(pos, GuiRandomProgress::Control::className(), "");
+		setWindowLong(GWLP_USERDATA, (LONG_PTR)m_data);
 	}
 
 private:
+	char m_data[1000/8];
 };
 
 class SpacingCtrl : public BaseCtrl
