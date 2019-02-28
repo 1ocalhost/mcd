@@ -22,7 +22,10 @@ public:
 class UiUtil
 {
 public:
-	UiUtil(HWND hwnd = NULL) : m_hwnd(hwnd) {}
+	void attach(HWND hwnd)
+	{
+		m_hwnd = hwnd;
+	}
 
 	void info(ConStrRef msg, ConStrRef title = {}) const
 	{
@@ -86,7 +89,7 @@ public:
 	{
 		initModels();
 
-		return Window(uiLayout(), {500, 320}, "MCD")
+		return Window(uiLayout(), 500, "MCD")
 			.onWindowMade(this, &View::onWindowMade)
 			.onAllControlsMade(this, &View::onAllControlsMade)
 			.onQuit(this, &View::onQuit)
@@ -167,7 +170,13 @@ private:
 					->onClick(this, &View::onDownload)
 			},
 			{
+				create<SpacingLineCtrl>((float)0.5)
+			},
+			{
 				create<RandomProgressCtrl>(Layout::Fill)
+			},
+			{
+				create<TextCtrl>(Layout::Fill)->bindModel(&uiStatusText),
 			}
 		};
 	}
@@ -181,11 +190,13 @@ private:
 		uiChkProxyServer = false;
 		uiChkUserAgent = true;
 		uiChkCookie = false;
+
+		uiStatusText = "23% Got, 1.12 MiB/s.";
 	}
 
 	void onWindowMade(const Window& win)
 	{
-		cpUtil = UiUtil(win.hwnd());
+		cpUtil.attach(win.hwnd());
 	}
 
 	void onAllControlsMade()
@@ -230,6 +241,8 @@ public:
 	UiBinding<bool> uiChkProxyServer;
 	UiBinding<bool> uiChkUserAgent;
 	UiBinding<bool> uiChkCookie;
+
+	UiBinding<std::string> uiStatusText;
 
 	// methods
 	virtual bool onQuit() = 0;

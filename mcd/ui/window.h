@@ -26,9 +26,23 @@ class Typesetter
 			const int kLineSpacing = 5;
 			m_curPos.yPlus(m_lineHeight + kLineSpacing);
 			m_curPos.x(m_padding);
+			m_preLineSpacing = kLineSpacing;
+		}
+
+		void nextLine(float heightRate)
+		{
+			int thisLineHeight = (int)(m_lineHeight * heightRate);
+			m_curPos.yPlus(thisLineHeight - m_preLineSpacing);
+			m_curPos.x(m_padding);
+		}
+
+		int layoutHeight()
+		{
+			return curPos().y() + m_padding;
 		}
 
 	private:
+		int m_preLineSpacing = 0;
 		int m_padding = 0;
 		int m_lineHeight = 0;
 		Point m_curPos;
@@ -50,6 +64,11 @@ public:
 	const ContentHost& content() const
 	{
 		return m_resGuard;
+	}
+
+	int layoutHeight()
+	{
+		return m_layoutHeight;
 	}
 
 	static int containerPadding()
@@ -77,10 +96,18 @@ public:
 				ctrl->init(parent, lineHeight_);
 
 			findAndFillWidth(line, containerWidth);
-			createInlineControls(line, &lineMode);
-			lineMode.nextLine();
+
+			float heightRate = 0;
+			if (line.size() && line[0]->spacingLineHeight(&heightRate)) {
+				lineMode.nextLine(heightRate);
+			}
+			else {
+				createInlineControls(line, &lineMode);
+				lineMode.nextLine();
+			}
 		}
 
+		m_layoutHeight = lineMode.layoutHeight();
 		return true;
 	}
 
@@ -126,15 +153,16 @@ private:
 
 	Layout::Content m_layoutContent;
 	ContentHost m_resGuard;
+	int m_layoutHeight = 0;
 };
 
 class Window : public WindowBase
 {
 public:
 	Window(Layout::Content&& layoutContent,
-		Size windowSize, ConStrRef windowTitle) :
+		int windowWidth, ConStrRef windowTitle) :
 		m_typesetter(layoutContent),
-		m_windowSize(windowSize),
+		m_windowSize({windowWidth, 0}),
 		m_windowTitle(windowTitle)
 	{
 		m_thunk.Init((DWORD_PTR)_windowProc, this);
@@ -290,6 +318,9 @@ private:
 	{
 		if (!m_typesetter.parse(this))
 			return false;
+
+		m_windowSize.height(m_typesetter.layoutHeight());
+		setClientSize(m_windowSize);
 
 		initChildUiFont();
 		if (m_eventAllControlsMade)

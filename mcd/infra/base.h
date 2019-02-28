@@ -37,6 +37,12 @@ inline bool debugMode()
 #endif
 }
 
+class InterfaceClass
+{
+public:
+	virtual ~InterfaceClass() {}
+};
+
 template <class T>
 inline bool inRange(T v, T begin, T end)
 {
@@ -416,6 +422,11 @@ public:
 			height() + rhs.height());
 	}
 
+	RECT toRect()
+	{
+		return {0, 0, width(), height()};
+	}
+
 private:
 	int m_width = 0;
 	int m_height = 0;
@@ -445,6 +456,32 @@ public:
 private:
 	int m_x = 0;
 	int m_y = 0;
+};
+
+class Rect
+{
+public:
+	Rect(const RECT& rect)
+	{
+		m_left = rect.left;
+		m_top = rect.top;
+		m_right = rect.right;
+		m_bottom = rect.bottom;
+	}
+
+	int left() const { return m_left; }
+	int top() const { return m_top; }
+	int right() const { return m_right; }
+	int bottom() const { return m_bottom; }
+
+	int width() const { return right() - left(); }
+	int height() const { return bottom() - top(); }
+
+private:
+	int m_left = 0;
+	int m_top = 0;
+	int m_right = 0;
+	int m_bottom = 0;
 };
 
 END_NAMESPACE_MCD

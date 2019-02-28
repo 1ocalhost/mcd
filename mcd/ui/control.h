@@ -12,13 +12,14 @@ public:
 	typedef std::vector<ContentLine> Content;
 
 	enum Style {
+		SpacingLine,
 		Optimum,
 		Fill,
 		Fixed
 	};
 };
 
-class WindowBase
+class WindowBase : public InterfaceClass
 {
 public:
 	HWND hwnd() const { return m_hwnd; }
@@ -94,6 +95,18 @@ public:
 		return {rect.right, rect.bottom};
 	}
 
+	void setClientSize(Size size)
+	{
+		RECT rect = size.toRect();
+		DWORD style = (DWORD)windowLong(GWL_STYLE);
+		AdjustWindowRect(&rect, style, FALSE);
+
+		Rect newRect = rect;
+		SetWindowPos(hwnd(), NULL, 0, 0,
+			newRect.width(), newRect.height(),
+			SWP_NOZORDER | SWP_NOMOVE);
+	}
+
 private:
 	WindowBase* m_parent = nullptr;
 	HWND m_hwnd = NULL;
@@ -103,8 +116,6 @@ private:
 class BaseCtrl : public WindowBase
 {
 public:
-	virtual ~BaseCtrl() {}
-
 	BaseCtrl(Layout::Style style, int width) :
 		m_layoutStyle(style), m_layoutWidth(width)
 	{
@@ -178,6 +189,12 @@ public:
 		}
 	}
 
+	virtual bool spacingLineHeight(float* heightRate)
+	{
+		UNUSED(heightRate);
+		return false;
+	}
+
 	virtual void onMessageCommand(WORD /*eventType*/) {}
 	virtual void onMessageNotify(LPNMHDR /*info*/) {}
 	virtual void calcOptimumSize() = 0;
@@ -232,6 +249,33 @@ public:
 private:
 	T m_value;
 	Notifier m_notifier;
+};
+
+class SpacingLineCtrl : public BaseCtrl
+{
+public:
+	SpacingLineCtrl(float heightRate) :
+		BaseCtrl(Layout::Style::SpacingLine, 0),
+		m_heightRate(heightRate) {}
+
+	bool spacingLineHeight(float* heightRate) override
+	{
+		*heightRate = m_heightRate;
+		return true;
+	}
+
+	void calcOptimumSize() override
+	{
+	}
+
+	void create(Point pos) override
+	{
+		UNUSED(pos);
+		assert(0);
+	}
+
+private:
+	float m_heightRate = 0;
 };
 
 class TextCtrl : public BaseCtrl
@@ -301,7 +345,6 @@ public:
 
 	void calcOptimumSize() override
 	{
-		setHeight(8);
 	}
 
 	void create(Point pos) override
