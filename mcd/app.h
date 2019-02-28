@@ -4,6 +4,22 @@
 
 BEGIN_NAMESPACE_MCD
 
+class UiString : public std::string
+{
+public:
+	typedef UiString Self;
+
+	UiString(ConStrRef str) : std::string(str) {}
+
+	Self& operator +(const UiBinding<std::string>& str)
+	{
+		append(str.get());
+		return *this;
+	}
+};
+
+typedef UiString _S;
+
 class App : public View
 {
 private:
@@ -14,8 +30,12 @@ private:
 
 	void onDownload() override
 	{
-		uiUrl = (uiUrl.get() + toString(uiConnNum));
-		return;
+		uiUrl = encodeUri(uiUrl);
+
+		//uiUrl = (uiUrl.get() + toString(uiConnNum));
+
+		//uiUrl = httpConfig().var_dump();
+
 
 		//Result r = startDownload(uiUrl, uiConnNum, httpConfig());
 
@@ -24,6 +44,24 @@ private:
 		//}
 
 		//cpState.update(r.ok() ? UiState::Working : UiState::Initial);
+	}
+
+	HttpConfig httpConfig()
+	{
+		HttpConfig config;
+
+		if (uiChkProxyServer)
+			config.setHttpProxy(uiProxyServer);
+
+		if (uiChkUserAgent)
+			uiUserAgent = encodeUri(uiUserAgent);
+			config.addHeader(_S("User-Agent: ") + uiUserAgent);
+
+		if (uiChkCookie)
+			uiCookie = encodeUri(uiCookie);
+			config.addHeader(_S("Cookie: ") + uiCookie);
+
+		return config;
 	}
 
 	void showError(const Result& r)

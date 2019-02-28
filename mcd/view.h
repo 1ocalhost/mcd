@@ -247,11 +247,6 @@ public:
 	// methods
 	virtual bool onQuit() = 0;
 	virtual void onDownload() = 0;
-
-	HttpConfig httpConfig()
-	{
-		return HttpConfig();
-	}
 };
 
 END_NAMESPACE_MCD

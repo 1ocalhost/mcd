@@ -43,6 +43,9 @@ public:
 	virtual ~InterfaceClass() {}
 };
 
+template<class T, size_t N>
+constexpr size_t _sizeof(T(&)[N]) { return N; }
+
 template <class T>
 inline bool inRange(T v, T begin, T end)
 {
@@ -123,7 +126,7 @@ inline std::vector<std::string> split(
 	return result;
 }
 
-inline void escapeChar(std::string* str)
+inline void escapeBlankChar(std::string* str)
 {
 	auto hasSpecialChar = [=]() -> bool {
 		for (auto& i : *str) {
@@ -195,8 +198,7 @@ inline bool toNumber(ConStrRef str, unsigned long* number)
 
 } // namespace StringUtil
 
-namespace StringParser
-{
+namespace StringParser {
 
 class URI
 {
@@ -361,6 +363,71 @@ private:
 
 } // namespace StringParser
 
+namespace StringEncoder {
+
+inline bool isUriBasicChar(unsigned char ch)
+{
+	unsigned char t[] = "-_.!~*'()";
+	unsigned char* end = t + _sizeof(t) - 1;
+	return isalnum(ch)
+		|| std::find(t, end, ch) != end;
+}
+
+inline bool isUriSeparatorChar(unsigned char ch)
+{
+	unsigned char t[] = ";/?:@&=+$,#";
+	unsigned char* end = t + _sizeof(t) - 1;
+	return std::find(t, end, ch) != end;
+}
+
+namespace _private {
+
+template <bool tIgnoreSeparatorChar = true>
+std::string encodeUriImpl(const std::string& str)
+{
+	const bool isc = tIgnoreSeparatorChar;
+	std::stringstream ss;
+	ss << std::hex << std::uppercase;
+
+	for (auto i = str.begin(); i != str.end();) {
+		unsigned char ch = *i;
+
+		if (ch == '%') {
+			for (int n = 0;
+				n < 3 && i != str.end();
+				++n) {
+				ss << *i;
+				++i;
+			}
+			continue;
+		}
+
+		if (isUriBasicChar(ch)
+			|| (isc && isUriSeparatorChar(ch)))
+			ss << ch;
+		else
+			ss << '%' << (int)ch;
+
+		++i;
+	}
+
+	return ss.str();
+}
+
+} // namespace _private
+
+inline std::string encodeUri(ConStrRef str)
+{
+	return _private::encodeUriImpl<true>(str);
+}
+
+inline std::string encodeUriComponent(ConStrRef str)
+{
+	return _private::encodeUriImpl<false>(str);
+}
+
+} // StringEncoder
+
 template <class T>
 class MaxMinValue
 {
@@ -484,6 +551,7 @@ private:
 	int m_bottom = 0;
 };
 
-END_NAMESPACE_MCD
+using namespace StringUtil;
+using namespace StringEncoder;
 
-using namespace mcd::StringUtil;
+END_NAMESPACE_MCD

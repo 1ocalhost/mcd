@@ -80,7 +80,7 @@ public:
 		if (validWrapper)
 			str.push_back(m_wrapper[1]);
 
-		escapeChar(&str);
+		escapeBlankChar(&str);
 		return str;
 	}
 

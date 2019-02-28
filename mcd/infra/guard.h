@@ -6,39 +6,29 @@ BEGIN_NAMESPACE_MCD
 
 namespace ResGuard {
 
-template <class HandleType>
-using WinBoolDeleter = BOOL(*)(HandleType);
-
-template <class T, class D>
-using GuardImpl = std::unique_ptr<typename std::remove_pointer<T>::type, D>;
-
 template <class T>
-using WinBoolDeleterGuard = GuardImpl<T, WinBoolDeleter<T>>;
+using GuardImpl = std::unique_ptr<
+	typename std::remove_pointer<T>::type,
+	std::function<void(T)>
+>;
 
-struct WinHttpCloseHandleGuard : public WinBoolDeleterGuard<HINTERNET>
+struct WinHttp : public GuardImpl<HINTERNET>
 {
-	WinHttpCloseHandleGuard(HINTERNET h = NULL) :
-		WinBoolDeleterGuard<HINTERNET>(h, WinHttpCloseHandle) {}
+	WinHttp(HINTERNET h = NULL) :
+		GuardImpl<HINTERNET>(h, WinHttpCloseHandle) {}
 };
 
-typedef WinHttpCloseHandleGuard WinHttp;
-
 template <class T>
-struct DeleteObjectGuard : public WinBoolDeleterGuard<T>
+struct DeleteObjectGuard : public GuardImpl<T>
 {
 	DeleteObjectGuard(T h = NULL) :
-		WinBoolDeleterGuard<T>(h, deleteObject) {}
-
-	static BOOL deleteObject(T h)
-	{
-		return DeleteObject(h);
-	}
+		GuardImpl<T>(h, DeleteObject) {}
 };
 
 typedef DeleteObjectGuard<HFONT> GdiFont;
 typedef DeleteObjectGuard<HBRUSH> GdiBrush;
 typedef DeleteObjectGuard<HBITMAP> GdiBitmap;
-typedef DeleteObjectGuard<HDC> GdiDeleteDc;
+typedef DeleteObjectGuard<HDC> GdiDeleteDc; // or GdiReleaseDc?
 
 struct GdiReleaseDc
 {
