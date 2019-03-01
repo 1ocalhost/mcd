@@ -7,36 +7,93 @@ BEGIN_NAMESPACE_MCD
 class UiState
 {
 public:
-	enum State
-	{
+	enum State {
 		Ready,
 		Working
 	};
+
+	enum Waiting {
+		Start,
+		Wait,
+		End
+	};
+
+	typedef std::function<void(Waiting)> OnWaittingFn;
 
 	UiState(const Window* window) : m_window(*window)
 	{
 	}
 
+	~UiState()
+	{
+		m_waiting = nullptr;
+	}
+
+	State curState() const
+	{
+		return m_curState;
+	}
+
 	void update(State s)
 	{
+		if (s == m_curState)
+			return;
+
 		if (s == State::Working) {
 			disableAllCtrl();
+			playWaiting();
+			setCtrlText("download", "Abort");
 		}
 		else if (s == State::Ready) {
 			if (m_curState == State::Working)
 				restoreCtrlState();
+
+			setCtrlText("download", "Download");
+			m_waiting = nullptr;
 		}
 
 		m_curState = s;
 	}
 
+	void onWaiting(OnWaittingFn fn)
+	{
+		m_onWaiting = fn;
+	}
+
 private:
+	void playWaiting()
+	{
+		if (!m_onWaiting)
+			return;
+
+		m_waiting = new std::thread();
+		*m_waiting = std::thread([&](std::thread* self) {
+			m_onWaiting(Waiting::Start);
+
+			do {
+				m_onWaiting(Waiting::Wait);
+				sleep(0.5);
+			} while (m_waiting == self);
+
+			m_onWaiting(Waiting::End);
+			delete self;
+		}, m_waiting);
+		m_waiting->detach();
+	}
+
+	void setCtrlText(const char* id, ConStrRef text)
+	{
+		m_window.eachCtrl([&](BaseCtrl* ctrl) {
+			if (ctrl->uid() == id)
+				ctrl->setGuiText(text);
+		});
+	}
+
 	void disableAllCtrl()
 	{
 		m_disabled.clear();
 		m_window.eachCtrl([&](BaseCtrl* ctrl) {
-			if (userInputType(ctrl)
-				&& !ctrlInWhiteList(ctrl)
+			if (!ctrlInWhiteList(ctrl)
 				&& ctrl->enabled()) {
 				m_disabled.push_back(ctrl);
 				ctrl->setEnabled(false);
@@ -58,20 +115,12 @@ private:
 		m_disabled.clear();
 	}
 
-	static bool userInputType(BaseCtrl* ctrl)
-	{
-		return dynamic_cast<EditCtrl*>(ctrl)
-			|| dynamic_cast<CheckBoxCtrl*>(ctrl)
-			|| dynamic_cast<ButtonCtrl*>(ctrl)
-			|| dynamic_cast<UpDownCtrl*>(ctrl)
-			|| dynamic_cast<HyperlinkCtrl*>(ctrl)
-			|| dynamic_cast<TextCtrl*>(ctrl)
-		;
-	}
-
 	State m_curState = Ready;
 	const Window& m_window;
 	std::vector<BaseCtrl*> m_disabled;
+
+	std::thread* m_waiting = nullptr;
+	OnWaittingFn m_onWaiting;
 };
 
 class UiUtil
@@ -154,8 +203,8 @@ class View
 public:
 	View() :
 		m_window(uiLayout(), 500, "MCD"),
-		cpState(&m_window),
-		cpUtil(&m_window)
+		comState(&m_window),
+		comUtil(&m_window)
 	{}
 
 	int run(int showState)
@@ -240,7 +289,7 @@ private:
 				create<SpacingCtrl>(Layout::Fixed, 20),
 				create<ButtonCtrl>()
 					->setDefault("Download")
-					->onClick(this, &View::onDownload)
+					->onClick(this, &View::onDownloadClick)
 					->setUid("download")
 			},
 			{
@@ -268,6 +317,27 @@ private:
 		uiChkCookie = false;
 
 		uiStatusText = "23% Got, 1.12 MiB/s.";
+
+		comState.onWaiting(std::bind(&View::onWaiting, this, _1));
+	}
+
+	void onWaiting(UiState::Waiting s)
+	{
+		if (s != UiState::Waiting::Wait) {
+			uiStatusText = "";
+			return;
+		}
+
+		char ch = '.';
+		if (uiStatusText.get().size())
+			ch = uiStatusText.get().front();
+
+		if (ch == '-')
+			uiStatusText = "\\ ...";
+		else if (ch == '\\')
+			uiStatusText = "/ ...";
+		else
+			uiStatusText = "- ...";
 	}
 
 	void onConnectionsChanged(bool upOrDown)
@@ -282,18 +352,26 @@ private:
 	void onRevealFolder()
 	{
 		if (uiSavingPath.get().size())
-			cpUtil.revealPath(uiSavingPath);
+			comUtil.revealPath(uiSavingPath);
 	}
 
 	void onSelectFolder()
 	{
-		uiSavingPath = cpUtil.browseForFolder();
+		uiSavingPath = comUtil.browseForFolder();
+	}
+
+	void onDownloadClick()
+	{
+		if (comState.curState() == UiState::Ready)
+			onDownload();
+		else if (comState.curState() == UiState::Wait)
+			onAbort();
 	}
 
 public:
 	// components
-	UiState cpState;
-	UiUtil cpUtil;
+	UiState comState;
+	UiUtil comUtil;
 
 	// models
 	UiBinding<std::string> uiUrl;
@@ -313,6 +391,7 @@ public:
 	// methods
 	virtual bool onQuit() = 0;
 	virtual void onDownload() = 0;
+	virtual void onAbort() = 0;
 
 private:
 	Window m_window;

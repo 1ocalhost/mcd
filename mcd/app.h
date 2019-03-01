@@ -59,19 +59,27 @@ class App : public View
 private:
 	bool onQuit() override
 	{
-		return cpUtil.ask("Quit?", false);
+		return comUtil.ask("Quit?", false);
 	}
 
 	void onDownload() override
 	{
 		uiUrl = encodeUri(trim(uiUrl));
-		Result r = startDownload(uiUrl, uiConnNum, httpConfig());
+		//Result r = startDownload(uiUrl, uiConnNum, httpConfig());
 
-		if (r.failed()) {
-			showError(r);
-		}
+		//if (r.failed()) {
+		//	showError(r);
+		//}
 
-		cpState.update(r.ok() ? UiState::Working : UiState::Initial);
+		//cpState.update(r.ok() ? UiState::Working : UiState::Ready);
+
+
+		comState.update(UiState::Working);
+	}
+
+	void onAbort() override
+	{
+		comState.update(UiState::Ready);
 	}
 
 	HttpConfig httpConfig()
@@ -107,7 +115,7 @@ private:
 				ss << " (" << msg << ")";
 		}
 
-		cpUtil.error(ss.str());
+		comUtil.error(ss.str());
 	}
 
 	static Result checkUrlSupportRange(ConStrRef url,
@@ -139,7 +147,7 @@ private:
 			_call(checkUrlSupportRange(url, config));
 
 		//DownloadTask(url, connNum);
-		cpUtil.info("OK");
+		comUtil.info("OK");
 		return {};
 	}
 };

@@ -705,7 +705,6 @@ public:
 	template <class Obj, class Fn>
 	UpDownCtrl* onChanged(Obj&& that, Fn&& func)
 	{
-		using namespace std::placeholders;
 		m_onChanged = std::bind(func, that, _1);
 		return this;
 	}

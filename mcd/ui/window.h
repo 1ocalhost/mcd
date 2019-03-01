@@ -195,7 +195,8 @@ public:
 	void eachCtrl(std::function<void(BaseCtrl*)> fn) const
 	{
 		for (auto& i : m_typesetter.content()) {
-			fn(i.get());
+			if (i->hwnd())
+				fn(i.get());
 		}
 	}
 

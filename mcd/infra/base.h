@@ -13,6 +13,7 @@
 #include <map>
 #include <functional>
 #include <array>
+#include <thread>
 
 #define KB(value) ((value) * 1024)
 #define MB(value) (KB(value) * 1024)
@@ -73,6 +74,13 @@ bool inArray(EleType&& toFind, T&&... ele)
 {
 	auto arr = makeArray<EleType>(ele...);
 	return std::find(arr.begin(), arr.end(), toFind) != arr.end();
+}
+
+inline void sleep(double seconds)
+{
+	std::this_thread::sleep_for(
+		std::chrono::milliseconds(
+			static_cast<int>(1000 * seconds)));
 }
 
 typedef const std::string& ConStrRef;
@@ -188,6 +196,16 @@ inline const std::string toLower(const std::string& str)
 {
 	std::string str_(str);
 	return toLower(&str_);
+}
+
+inline bool equals(ConStrRef a, ConStrRef b)
+{
+	return a.compare(b) == 0;
+}
+
+inline bool equals(ConStrRef a, const char* b)
+{
+	return b && a.compare(b) == 0;
 }
 
 inline bool iEquals(ConStrRef a, ConStrRef b)
@@ -642,5 +660,7 @@ private:
 
 using namespace StringUtil;
 using namespace StringEncoder;
+
+using namespace std::placeholders;
 
 END_NAMESPACE_MCD
