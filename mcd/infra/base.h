@@ -511,6 +511,24 @@ struct BinaryData
 	DWORD size;
 };
 
+class NativeString
+{
+public:
+	typedef const char* StrPtr;
+
+	NativeString(StrPtr str) : m_str(str) {}
+
+	operator StrPtr() const { return m_str; }
+
+	bool operator ==(StrPtr other)
+	{
+		return strcmp(m_str, other) == 0;
+	}
+
+private:
+	StrPtr m_str = nullptr;
+};
+
 class Size
 {
 public:

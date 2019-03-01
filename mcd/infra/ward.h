@@ -22,7 +22,7 @@ public:
 	bool ok() const { return m_code == kSuccess; }
 	bool failed() const { return !ok(); }
 
-	const char* space() const { return m_space; }
+	NativeString space() const { return m_space; }
 	int code() const { return m_code; }
 
 private:

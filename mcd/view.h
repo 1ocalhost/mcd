@@ -29,15 +29,18 @@ public:
 
 	void info(ConStrRef msg, ConStrRef title = {}) const
 	{
-		MessageBox(m_hwnd, u8to16(msg),
-			u8to16(title), MB_ICONINFORMATION | MB_OK);
+		messageBox(msg, title, MB_ICONINFORMATION | MB_OK);
+	}
+
+	void error(ConStrRef msg, ConStrRef title = {}) const
+	{
+		messageBox(msg, title, MB_ICONERROR | MB_OK);
 	}
 
 	bool ask(ConStrRef msg, bool defaultBtn = true, ConStrRef title = {}) const
 	{
 		DWORD extraFlag = defaultBtn ? MB_DEFBUTTON1 : MB_DEFBUTTON2;
-		return IDYES == MessageBox(m_hwnd, u8to16(msg),
-			u8to16(title),
+		return IDYES == messageBox(msg, title,
 			extraFlag | MB_ICONQUESTION | MB_YESNO);
 	}
 
@@ -73,6 +76,11 @@ public:
 	}
 
 private:
+	int messageBox(ConStrRef msg, ConStrRef title, UINT flags) const
+	{
+		return MessageBox(m_hwnd, u8to16(msg), u8to16(title), flags);
+	}
+
 	HWND m_hwnd = NULL;
 };
 

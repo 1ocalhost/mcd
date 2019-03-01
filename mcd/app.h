@@ -20,6 +20,40 @@ public:
 
 typedef UiString _S;
 
+
+inline std::string errorString(DWORD code, PCWSTR module = L"")
+{
+	if (code == 0)
+		return {};
+
+	const bool fromSystem = (module[0] == '\0');
+	DWORD flag = fromSystem
+		? FORMAT_MESSAGE_FROM_SYSTEM : FORMAT_MESSAGE_FROM_HMODULE;
+
+	LPCVOID source = fromSystem ? NULL : GetModuleHandle(module);
+	if (!fromSystem && !source) {
+		assert(0);
+		return {};
+	}
+
+	flag |= FORMAT_MESSAGE_ALLOCATE_BUFFER;
+	flag |= FORMAT_MESSAGE_IGNORE_INSERTS;
+
+	PSTR message = NULL; // will be in ASCII safely
+	DWORD size = FormatMessageA(
+		flag,
+		source, code, NULL, (PSTR)&message, 0, NULL);
+
+	std::string result(message, (size_t)size);
+	LocalFree(message);
+
+	trimRight(&result);
+	if (result.size() && *result.rbegin() == '.')
+		result.pop_back();
+
+	return result;
+}
+
 class App : public View
 {
 private:
@@ -66,10 +100,14 @@ private:
 	{
 		std::stringstream ss;
 		ss << "Error: " << r.space() << "." << r.code();
-		//if (strcmp(r.space(), http_api::resultSpace()) == 0)
-		//	ss << " (" << "****" << ")";
 
-		cpUtil.info(ss.str());
+		if (r.space() == http_api::resultSpace()) {
+			std::string msg = errorString(r.code(), L"winhttp.dll");
+			if (msg.size())
+				ss << " (" << msg << ")";
+		}
+
+		cpUtil.error(ss.str());
 	}
 
 	static Result checkUrlSupportRange(ConStrRef url,
