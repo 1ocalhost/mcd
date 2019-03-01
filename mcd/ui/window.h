@@ -186,25 +186,17 @@ public:
 	}
 
 	template <class Obj, class Fn>
-	Window& onWindowMade(Obj&& that, Fn&& func)
-	{
-		using namespace std::placeholders;
-		m_eventInit = std::bind(func, that, _1);
-		return *this;
-	}
-
-	template <class Obj, class Fn>
-	Window& onAllControlsMade(Obj&& that, Fn&& func)
-	{
-		m_eventAllControlsMade = std::bind(func, that);
-		return *this;
-	}
-
-	template <class Obj, class Fn>
 	Window& onQuit(Obj&& that, Fn&& func)
 	{
 		m_eventQuit = std::bind(func, that);
 		return *this;
+	}
+
+	void eachCtrl(std::function<void(BaseCtrl*)> fn) const
+	{
+		for (auto& i : m_typesetter.content()) {
+			fn(i.get());
+		}
 	}
 
 private:
@@ -268,9 +260,6 @@ private:
 			return false;
 
 		setHwnd(hwnd);
-		if (m_eventInit)
-			m_eventInit(*this);
-
 		m_defaultWndProc = (WNDPROC)setWindowLong(
 			GWLP_WNDPROC, (LONG_PTR)m_thunk.GetCodeAddress());
 
@@ -323,9 +312,6 @@ private:
 		setClientSize(m_windowSize);
 
 		initChildUiFont();
-		if (m_eventAllControlsMade)
-			m_eventAllControlsMade();
-
 		return true;
 	}
 
@@ -358,8 +344,6 @@ private:
 	std::string m_windowTitle;
 
 	// events
-	std::function<void(const Window&)> m_eventInit;
-	std::function<void()> m_eventAllControlsMade;
 	std::function<bool()> m_eventQuit;
 };
 

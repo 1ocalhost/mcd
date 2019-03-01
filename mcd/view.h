@@ -9,22 +9,81 @@ class UiState
 public:
 	enum State
 	{
-		Initial,
+		Ready,
 		Working
 	};
 
+	UiState(const Window* window) : m_window(*window)
+	{
+	}
+
 	void update(State s)
 	{
-		UNUSED(s);
+		if (s == State::Working) {
+			disableAllCtrl();
+		}
+		else if (s == State::Ready) {
+			if (m_curState == State::Working)
+				restoreCtrlState();
+		}
+
+		m_curState = s;
 	}
+
+private:
+	void disableAllCtrl()
+	{
+		m_disabled.clear();
+		m_window.eachCtrl([&](BaseCtrl* ctrl) {
+			if (userInputType(ctrl)
+				&& !ctrlInWhiteList(ctrl)
+				&& ctrl->enabled()) {
+				m_disabled.push_back(ctrl);
+				ctrl->setEnabled(false);
+			}
+		});
+	}
+
+	bool ctrlInWhiteList(BaseCtrl* ctrl)
+	{
+		return inArray<NativeString>(
+			ctrl->uid().c_str(), "download", "status");
+	}
+
+	void restoreCtrlState()
+	{
+		for (auto i : m_disabled)
+			i->setEnabled(true);
+
+		m_disabled.clear();
+	}
+
+	static bool userInputType(BaseCtrl* ctrl)
+	{
+		return dynamic_cast<EditCtrl*>(ctrl)
+			|| dynamic_cast<CheckBoxCtrl*>(ctrl)
+			|| dynamic_cast<ButtonCtrl*>(ctrl)
+			|| dynamic_cast<UpDownCtrl*>(ctrl)
+			|| dynamic_cast<HyperlinkCtrl*>(ctrl)
+			|| dynamic_cast<TextCtrl*>(ctrl)
+		;
+	}
+
+	State m_curState = Ready;
+	const Window& m_window;
+	std::vector<BaseCtrl*> m_disabled;
 };
 
 class UiUtil
 {
 public:
-	void attach(HWND hwnd)
+	UiUtil(const Window* window) : m_window(*window)
 	{
-		m_hwnd = hwnd;
+	}
+
+	HWND hwnd() const
+	{
+		return m_window.hwnd();
 	}
 
 	void info(ConStrRef msg, ConStrRef title = {}) const
@@ -50,7 +109,7 @@ public:
 
 		TCHAR szDir[MAX_PATH];
 		BROWSEINFO bInfo;
-		bInfo.hwndOwner = m_hwnd;
+		bInfo.hwndOwner = hwnd();
 		bInfo.pidlRoot = NULL;
 		bInfo.pszDisplayName = szDir;
 		bInfo.lpszTitle = title16.c_str();
@@ -78,10 +137,10 @@ public:
 private:
 	int messageBox(ConStrRef msg, ConStrRef title, UINT flags) const
 	{
-		return MessageBox(m_hwnd, u8to16(msg), u8to16(title), flags);
+		return MessageBox(hwnd(), u8to16(msg), u8to16(title), flags);
 	}
 
-	HWND m_hwnd = NULL;
+	const Window& m_window;
 };
 
 template <class T, class... P>
@@ -93,13 +152,16 @@ T* create(P... args)
 class View
 {
 public:
+	View() :
+		m_window(uiLayout(), 500, "MCD"),
+		cpState(&m_window),
+		cpUtil(&m_window)
+	{}
+
 	int run(int showState)
 	{
 		initModels();
-
-		return Window(uiLayout(), 500, "MCD")
-			.onWindowMade(this, &View::onWindowMade)
-			.onAllControlsMade(this, &View::onAllControlsMade)
+		return m_window
 			.onQuit(this, &View::onQuit)
 			.run(showState);
 	}
@@ -107,10 +169,13 @@ public:
 private:
 	BaseCtrl* createClearButton(UiBinding<std::string>* model)
 	{
-		return create<HyperlinkCtrl>(Layout::Optimum)
+		auto clearFn = [](UiBinding<std::string>* m) {
+			*m = "";
+		};
+
+		return create<HyperlinkCtrl>()
 			->setDefault("Clear")
-			->onClickFn(std::bind(
-				[](UiBinding<std::string>* m) { *m = ""; }, model));
+			->onClickFn(std::bind(clearFn, model));
 	}
 
 	std::vector<BaseCtrl*> createOptionLine(ConStrRef name,
@@ -118,7 +183,7 @@ private:
 		UiBinding<bool>* modelCheck,
 		UiBinding<std::string>* modelEdit)
 	{
-		CheckBoxCtrl* checkCtrl = create<CheckBoxCtrl>(Layout::Optimum)
+		CheckBoxCtrl* checkCtrl = create<CheckBoxCtrl>()
 			->setDefault(name)->bindModel(modelCheck);
 
 		BaseCtrl* editCtrl = create<EditCtrl>(Layout::Fill)
@@ -129,7 +194,7 @@ private:
 
 	Layout::Content uiLayout()
 	{
-		CheckBoxCtrl* chkProxyServer = create<CheckBoxCtrl>(Layout::Optimum)
+		CheckBoxCtrl* chkProxyServer = create<CheckBoxCtrl>()
 			->setDefault("HTTP Proxy:")->bindModel(&uiChkProxyServer);
 
 		EditCtrl* editProxyServer = create<EditCtrl>(Layout::Fill)
@@ -137,18 +202,18 @@ private:
 
 		return {
 			{
-				create<TextCtrl>(Layout::Optimum)->setDefault("URL:"),
+				create<TextCtrl>()->setDefault("URL:"),
 				create<EditCtrl>(Layout::Fill)->bindModel(&uiUrl),
 				createClearButton(&uiUrl)
 			},
 			{
-				create<TextCtrl>(Layout::Optimum)->setDefault("Save To:"),
+				create<TextCtrl>()->setDefault("Save To:"),
 				create<TextCtrl>(Layout::Fill)
 					->bindModel(&uiSavingPath)->setEndWithEllipsis(),
-				create<HyperlinkCtrl>(Layout::Optimum)
+				create<HyperlinkCtrl>()
 					->setDefault("Select")
 					->onClick(this, &View::onSelectFolder),
-				create<HyperlinkCtrl>(Layout::Optimum)
+				create<HyperlinkCtrl>()
 					->setDefault("Reveal")
 					->onClick(this, &View::onRevealFolder)
 			},
@@ -168,14 +233,15 @@ private:
 				&uiCookie),
 			{
 				create<SpacingCtrl>(Layout::Fill),
-				create<TextCtrl>(Layout::Optimum)->setDefault("Connections:"),
-				create<EditNumCtrl>(Layout::Optimum)->bindModel(&uiConnNum),
-				create<UpDownCtrl>(Layout::Optimum)
+				create<TextCtrl>()->setDefault("Connections:"),
+				create<EditNumCtrl>()->bindModel(&uiConnNum),
+				create<UpDownCtrl>()
 					->onChanged(this, &View::onConnectionsChanged),
 				create<SpacingCtrl>(Layout::Fixed, 20),
-				create<ButtonCtrl>(Layout::Optimum)
+				create<ButtonCtrl>()
 					->setDefault("Download")
 					->onClick(this, &View::onDownload)
+					->setUid("download")
 			},
 			{
 				create<SpacingLineCtrl>((float)0.5)
@@ -184,7 +250,9 @@ private:
 				create<RandomProgressCtrl>(Layout::Fill)
 			},
 			{
-				create<TextCtrl>(Layout::Fill)->bindModel(&uiStatusText),
+				create<TextCtrl>(Layout::Fill)
+					->bindModel(&uiStatusText)
+					->setUid("status")
 			}
 		};
 	}
@@ -200,16 +268,6 @@ private:
 		uiChkCookie = false;
 
 		uiStatusText = "23% Got, 1.12 MiB/s.";
-	}
-
-	void onWindowMade(const Window& win)
-	{
-		cpUtil.attach(win.hwnd());
-	}
-
-	void onAllControlsMade()
-	{
-
 	}
 
 	void onConnectionsChanged(bool upOrDown)
@@ -255,6 +313,9 @@ public:
 	// methods
 	virtual bool onQuit() = 0;
 	virtual void onDownload() = 0;
+
+private:
+	Window m_window;
 };
 
 END_NAMESPACE_MCD

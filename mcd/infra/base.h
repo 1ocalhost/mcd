@@ -12,6 +12,7 @@
 #include <regex>
 #include <map>
 #include <functional>
+#include <array>
 
 #define KB(value) ((value) * 1024)
 #define MB(value) (KB(value) * 1024)
@@ -50,6 +51,28 @@ template <class T>
 inline bool inRange(T v, T begin, T end)
 {
 	return v >= begin && v < end;
+}
+
+template <class EleType = void, class... T>
+constexpr auto makeArray(T&&... ele)
+{
+	typedef typename std::common_type<T...>::type Element;
+
+	if constexpr (std::is_same<void, EleType>::value)
+		return std::array<Element, sizeof...(T)>{
+		static_cast<Element>(ele)...
+	};
+	else
+		return std::array<EleType, sizeof...(T)>{
+		static_cast<EleType>(ele)...
+	};
+}
+
+template <class EleType, class... T>
+bool inArray(EleType&& toFind, T&&... ele)
+{
+	auto arr = makeArray<EleType>(ele...);
+	return std::find(arr.begin(), arr.end(), toFind) != arr.end();
 }
 
 typedef const std::string& ConStrRef;
@@ -126,13 +149,14 @@ inline std::vector<std::string> split(
 
 inline void escapeBlankChar(std::string* str)
 {
-	auto hasSpecialChar = [=]() -> bool {
-		for (auto& i : *str) {
-			switch (i) {
-			case '\r':
-			case '\n':
-			case '\t':
-				return true;
+	const auto toEscape = makeArray<const char*>(
+		"\r\\r", "\n\\n", "\t\\t");
+
+	auto hasSpecialChar = [&]() -> bool {
+		for (char ch : *str) {
+			for (const char* item : toEscape) {
+				if (item[0] == ch)
+					return true;
 			}
 		}
 
@@ -143,7 +167,7 @@ inline void escapeBlankChar(std::string* str)
 		return;
 
 	std::string& s = *str;
-	for (auto i : { "\r\\r", "\n\\n", "\t\\t" }) {
+	for (auto i : toEscape) {
 		char ch = i[0];
 		const char* literal = &i[1];
 		if (s.find(ch) != std::string::npos)
@@ -499,6 +523,7 @@ public:
 	Bool(bool b = false) : m_b(b) {}
 	Bool(BOOL b) : m_b(b != FALSE) {}
 	operator bool() const { return m_b; }
+	operator BOOL() const { return (BOOL)m_b; }
 
 private:
 	bool m_b;

@@ -73,9 +73,14 @@ public:
 		return SendMessage(hwnd(), msg, wParam, lParam);
 	}
 
+	bool enabled()
+	{
+		return Bool(IsWindowEnabled(hwnd()));
+	}
+
 	void setEnabled(bool enabled = true)
 	{
-		EnableWindow(hwnd(), enabled ? TRUE : FALSE);
+		EnableWindow(hwnd(), Bool(enabled));
 	}
 
 	LONG_PTR windowLong(int index)
@@ -129,6 +134,7 @@ public:
 	int totalWidth() const { return size().width() + m_MarginRight; }
 	Point createdPos() const { return m_createdPos; }
 	BaseCtrl* following() const { return m_following; }
+	ConStrRef uid() const { return m_uid; }
 
 	void setSize(const Size& s) { m_size = s; }
 	void setWidth(int width) { m_size.width(width); }
@@ -137,6 +143,12 @@ public:
 	BaseCtrl* follow(BaseCtrl* who)
 	{
 		m_following = who;
+		return this;
+	}
+
+	BaseCtrl* setUid(ConStrRef uid)
+	{
+		m_uid = uid;
 		return this;
 	}
 
@@ -207,6 +219,7 @@ private:
 	int m_MarginRight = 0;
 	Size m_size;
 
+	std::string m_uid;
 	Point m_createdPos;
 	BaseCtrl* m_following = nullptr;
 };
@@ -283,7 +296,9 @@ class TextCtrl : public BaseCtrl
 public:
 	typedef UiBinding<std::string> *BindingType;
 
-	TextCtrl(Layout::Style style, int width = 0) :
+	TextCtrl(
+		Layout::Style style = Layout::Style::Optimum,
+		int width = 0) :
 		BaseCtrl(style, width)
 	{
 		setMarginRight(5);
@@ -372,7 +387,9 @@ public:
 class ButtonCtrl : public BaseCtrl
 {
 public:
-	ButtonCtrl(Layout::Style style, int width = 0) :
+	ButtonCtrl(
+		Layout::Style style = Layout::Style::Optimum,
+		int width = 0) :
 		BaseCtrl(style, width) {}
 
 	ButtonCtrl* setDefault(ConStrRef text)
@@ -432,7 +449,9 @@ class CheckBoxCtrl : public ButtonCtrl
 public:
 	typedef UiBinding<bool> *BindingType;
 
-	CheckBoxCtrl(Layout::Style style, int width = 0) :
+	CheckBoxCtrl(
+		Layout::Style style = Layout::Style::Optimum,
+		int width = 0) :
 		ButtonCtrl(style, width) {}
 
 	CheckBoxCtrl* setDefault(ConStrRef text)
@@ -504,7 +523,9 @@ class EditCtrl : public BaseCtrl
 public:
 	typedef UiBinding<std::string> *BindingType;
 
-	EditCtrl(Layout::Style style, int width = 0) :
+	EditCtrl(
+		Layout::Style style = Layout::Style::Optimum,
+		int width = 0) :
 		BaseCtrl(style, width)
 	{
 		setMarginRight(5);
@@ -562,7 +583,9 @@ private:
 class HyperlinkCtrl : public BaseCtrl
 {
 public:
-	HyperlinkCtrl(Layout::Style style, int width = 0) :
+	HyperlinkCtrl(
+		Layout::Style style = Layout::Style::Optimum,
+		int width = 0) :
 		BaseCtrl(style, width)
 	{
 		setMarginRight(5);
@@ -618,7 +641,9 @@ class EditNumCtrl : public EditCtrl
 public:
 	typedef UiBinding<int> *BindingType;
 
-	EditNumCtrl(Layout::Style style, int width = 0) :
+	EditNumCtrl(
+		Layout::Style style = Layout::Style::Optimum,
+		int width = 0) :
 		EditCtrl(style, width)
 	{
 		setMarginRight(2);
@@ -672,7 +697,9 @@ class UpDownCtrl : public BaseCtrl
 public:
 	typedef UiBinding<int> *BindingType;
 
-	UpDownCtrl(Layout::Style style, int width = 0) :
+	UpDownCtrl(
+		Layout::Style style = Layout::Style::Optimum,
+		int width = 0) :
 		BaseCtrl(style, width) {}
 
 	template <class Obj, class Fn>
