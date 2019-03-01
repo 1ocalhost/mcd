@@ -4,6 +4,11 @@
 
 BEGIN_NAMESPACE_MCD
 
+inline bool useDebugBreak()
+{
+	return false;
+}
+
 class Result
 {
 public:
@@ -31,6 +36,7 @@ class InternalError {
 public:
 	static Result assertFailed() { return make(1); }
 	static Result invalidInput() { return make(2); }
+	static Result exceedLimit() { return make(3); }
 };
 
 class FeatureError {
@@ -245,7 +251,7 @@ public:
 		m_cond(cond), m_statement(statement)
 	{
 		m_err = GetLastError();
-		if (debugMode() && type == 1 && !cond)
+		if (useDebugBreak() && debugMode() && type == 1 && !cond)
 			DebugBreak();
 	}
 

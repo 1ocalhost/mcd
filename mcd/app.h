@@ -30,20 +30,14 @@ private:
 
 	void onDownload() override
 	{
-		uiUrl = encodeUri(uiUrl);
+		uiUrl = encodeUri(trim(uiUrl));
+		Result r = startDownload(uiUrl, uiConnNum, httpConfig());
 
-		//uiUrl = (uiUrl.get() + toString(uiConnNum));
+		if (r.failed()) {
+			showError(r);
+		}
 
-		//uiUrl = httpConfig().var_dump();
-
-
-		//Result r = startDownload(uiUrl, uiConnNum, httpConfig());
-
-		//if (r.failed()) {
-		//	showError(r);
-		//}
-
-		//cpState.update(r.ok() ? UiState::Working : UiState::Initial);
+		cpState.update(r.ok() ? UiState::Working : UiState::Initial);
 	}
 
 	HttpConfig httpConfig()
@@ -53,13 +47,17 @@ private:
 		if (uiChkProxyServer)
 			config.setHttpProxy(uiProxyServer);
 
-		if (uiChkUserAgent)
-			uiUserAgent = encodeUri(uiUserAgent);
-			config.addHeader(_S("User-Agent: ") + uiUserAgent);
+		if (uiChkUserAgent) {
+			uiUserAgent = encodeUri(trim(uiUserAgent));
+			if (uiUserAgent.get().size())
+				config.addHeader(_S("User-Agent: ") + uiUserAgent);
+		}
 
-		if (uiChkCookie)
-			uiCookie = encodeUri(uiCookie);
-			config.addHeader(_S("Cookie: ") + uiCookie);
+		if (uiChkCookie) {
+			uiCookie = encodeUri(trim(uiCookie));
+			if (uiCookie.get().size())
+				config.addHeader(_S("Cookie: ") + uiCookie);
+		}
 
 		return config;
 	}
@@ -68,12 +66,13 @@ private:
 	{
 		std::stringstream ss;
 		ss << "Error: " << r.space() << "." << r.code();
-		ss << std::endl << uiUrl.get();
+		//if (strcmp(r.space(), http_api::resultSpace()) == 0)
+		//	ss << " (" << "****" << ")";
 
 		cpUtil.info(ss.str());
 	}
 
-	static Result checkUrlSupportRange(bool *support, ConStrRef url,
+	static Result checkUrlSupportRange(ConStrRef url,
 		const HttpConfig& config)
 	{
 		_must_not(config.hasHeader("Range"));
@@ -84,23 +83,25 @@ private:
 		_call(http.init(config_));
 		_call(http.open(url));
 
-		*support = (http.statusCode() == 206);
-		_should(*support, url, http);
+		if (http.statusCode() != 206)
+			return Result("http", http.statusCode());
+
+		bool support = http.headers().has("Content-Range");
+		_should(support, url, http);
+		_must_or_return(RequireError::httpSupportRange, support, url);
+
 		return {};
 	}
 
-	static Result startDownload(ConStrRef url, int connNum = 1,
+	Result startDownload(ConStrRef url, int connNum = 1,
 		HttpConfig config = HttpConfig())
 	{
 		_must(inRange(connNum, 1, 50), connNum);
-
-		if (connNum > 1) {
-			bool supported;
-			_call(checkUrlSupportRange(&supported, url, config));
-			_must_or_return(RequireError::httpSupportRange, supported, url);
-		}
+		if (connNum > 1)
+			_call(checkUrlSupportRange(url, config));
 
 		//DownloadTask(url, connNum);
+		cpUtil.info("OK");
 		return {};
 	}
 };

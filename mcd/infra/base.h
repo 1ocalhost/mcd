@@ -54,8 +54,6 @@ inline bool inRange(T v, T begin, T end)
 
 typedef const std::string& ConStrRef;
 typedef const std::wstring& ConWStrRef;
-typedef const std::string *ConStrPtr;
-typedef const std::wstring *ConWStrPtr;
 
 namespace StringUtil
 {
@@ -194,6 +192,54 @@ inline bool toNumber(ConStrRef str, unsigned long* number)
 	}
 
 	return true;
+}
+
+inline void trimLeft(std::string* s)
+{
+	s->erase(
+		s->begin(),
+		std::find_if(s->begin(), s->end(), [](int ch) {
+			return !::isspace(ch);
+		})
+	);
+}
+
+inline void trimRight(std::string* s)
+{
+	s->erase(
+		std::find_if(s->rbegin(), s->rend(), [](int ch) {
+			return !::isspace(ch);
+		}).base(),
+		s->end()
+	);
+}
+
+inline void trim(std::string* s)
+{
+	trimLeft(s);
+	trimRight(s);
+}
+
+inline std::string trimLeft(ConStrRef s)
+{
+	std::string s_(s);
+	trimLeft(&s_);
+	return s_;
+}
+
+inline std::string trimRight(ConStrRef s)
+{
+	std::string s_(s);
+	trimRight(&s_);
+	return s_;
+}
+
+inline std::string trim(ConStrRef s)
+{
+	std::string s_(s);
+	trimLeft(&s_);
+	trimRight(&s_);
+	return s_;
 }
 
 } // namespace StringUtil

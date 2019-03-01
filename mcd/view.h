@@ -184,11 +184,11 @@ private:
 	void initModels()
 	{
 		uiUrl = "https://httpbin.org/get";
-		uiConnNum = 3;
+		uiConnNum = 1;
 		uiProxyServer = "127.0.0.1:1080";
 
 		uiChkProxyServer = false;
-		uiChkUserAgent = true;
+		uiChkUserAgent = false;
 		uiChkCookie = false;
 
 		uiStatusText = "23% Got, 1.12 MiB/s.";

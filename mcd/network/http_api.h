@@ -4,10 +4,17 @@
 #define _must_or_return_winhttp_error(result, ...) { \
 	DWORD err = GetLastError(); \
 	if (!_eval_error(result).setContext(__VA_ARGS__)) \
-		return Result("winhttp", err); \
+		return Result(resultSpace(), err); \
 }
 
 BEGIN_NAMESPACE_MCD
+
+namespace http_api {
+
+inline const char* resultSpace()
+{
+	return "winhttp";
+}
 
 typedef std::vector<std::string> RequestHeaders;
 
@@ -206,5 +213,7 @@ inline Result readData(const HttpConnect& conn, BinaryData* data)
 	_must_or_return_winhttp_error(r);
 	return {};
 }
+
+} // namespace http_api
 
 END_NAMESPACE_MCD

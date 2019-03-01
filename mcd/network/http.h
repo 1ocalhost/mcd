@@ -3,6 +3,8 @@
 
 BEGIN_NAMESPACE_MCD
 
+using namespace http_api;
+
 class HttpConfig : public IMetaViewer
 {
 public:
@@ -200,6 +202,8 @@ private:
 class HttpResponseBase
 {
 public:
+	typedef uint32_t SizeType;
+
 	void setResponsedSize(uint32_t responsedSize)
 	{
 		m_sizeTotal = responsedSize;
@@ -211,26 +215,36 @@ public:
 		return {};
 	}
 
+	SizeType sizeDone() const
+	{
+		return m_sizeDone;
+	}
+
 private:
 	// WinHTTP donot support 64-bits
-	uint32_t m_sizeTotal = (uint32_t)-1;
-	uint32_t m_sizeDone = 0;
+	SizeType m_sizeTotal = (SizeType)-1;
+	SizeType m_sizeDone = 0;
 };
 
 
 class HttpResponseString : public HttpResponseBase
 {
 public:
-	HttpResponseString(std::string* str) : m_str(str) {}
+	HttpResponseString(std::string* str, SizeType maxLenth = KB(10)) :
+		m_str(str), m_maxLenth(maxLenth) {}
 
 	virtual Result write(const BinaryData& data) override
 	{
+		_must_or_return(InternalError::exceedLimit,
+			sizeDone() <= m_maxLenth, m_maxLenth);
+
 		m_str->append((const char*)data.buffer, data.size);
 		return HttpResponseBase::write(data);
 	}
 
 private:
 	std::string* m_str;
+	SizeType m_maxLenth;
 };
 
 
@@ -293,13 +307,17 @@ public:
 			sizeReceived += data.size;
 		}
 
-		abortPrevious();
 		return {};
 	}
 
 	int statusCode() const
 	{
 		return m_statusCode;
+	}
+
+	const HttpHeaders& headers() const
+	{
+		return m_responseHeaders;
 	}
 
 private:
