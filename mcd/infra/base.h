@@ -14,6 +14,7 @@
 #include <functional>
 #include <array>
 #include <thread>
+#include <mutex>
 
 #define KB(value) ((value) * 1024)
 #define MB(value) (KB(value) * 1024)
@@ -656,6 +657,14 @@ private:
 	int m_top = 0;
 	int m_right = 0;
 	int m_bottom = 0;
+};
+
+typedef std::mutex Mutex;
+
+class MutexGuard : public std::lock_guard<std::mutex>
+{
+public:
+	MutexGuard(Mutex* mutex) : lock_guard(*mutex) {}
 };
 
 using namespace StringUtil;

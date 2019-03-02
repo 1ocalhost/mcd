@@ -9,7 +9,8 @@ class UiState
 public:
 	enum State {
 		Ready,
-		Working
+		Working,
+		Aborting
 	};
 
 	enum Waiting {
@@ -42,14 +43,20 @@ public:
 		if (s == State::Working) {
 			disableAllCtrl();
 			playWaiting();
-			setCtrlText("download", "Abort");
+			ctrlByUid("download").setText("Abort");
+		}
+		else if (s == State::Aborting) {
+			ctrlByUid("download").setEnabled(false);
 		}
 		else if (s == State::Ready) {
-			if (m_curState == State::Working)
-				restoreCtrlState();
-
-			setCtrlText("download", "Download");
+			restoreCtrlState();
 			m_waiting = nullptr;
+
+			ctrlByUid("download")
+				.setText("Download")
+				.setEnabled(true);
+
+			ctrlByUid("status").setText("");
 		}
 
 		m_curState = s;
@@ -61,6 +68,31 @@ public:
 	}
 
 private:
+	class CtrlProxy
+	{
+	public:
+		CtrlProxy(BaseCtrl* ctrl) : m_ctrl(ctrl) {}
+
+		CtrlProxy& setText(ConStrRef text)
+		{
+			if (m_ctrl)
+				m_ctrl->setGuiText(text);
+
+			return *this;
+		}
+
+		CtrlProxy& setEnabled(bool enabled = true)
+		{
+			if (m_ctrl)
+				m_ctrl->setEnabled(enabled);
+
+			return *this;
+		}
+
+	private:
+		BaseCtrl* m_ctrl;
+	};
+
 	void playWaiting()
 	{
 		if (!m_onWaiting)
@@ -81,12 +113,15 @@ private:
 		m_waiting->detach();
 	}
 
-	void setCtrlText(const char* id, ConStrRef text)
+	CtrlProxy ctrlByUid(const char* id)
 	{
+		BaseCtrl* result = nullptr;
 		m_window.eachCtrl([&](BaseCtrl* ctrl) {
 			if (ctrl->uid() == id)
-				ctrl->setGuiText(text);
+				result = ctrl;
 		});
+
+		return result;
 	}
 
 	void disableAllCtrl()

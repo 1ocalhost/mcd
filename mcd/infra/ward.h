@@ -22,6 +22,13 @@ public:
 	bool ok() const { return m_code == kSuccess; }
 	bool failed() const { return !ok(); }
 
+	bool is(Result r) const
+	{
+		return m_space == r.m_space && m_code == r.m_code;
+	}
+
+	bool is(Result (*err)()) const { return this->is(err()); }
+
 	NativeString space() const { return m_space; }
 	int code() const { return m_code; }
 
@@ -37,6 +44,7 @@ public:
 	static Result assertFailed() { return make(1); }
 	static Result invalidInput() { return make(2); }
 	static Result exceedLimit() { return make(3); }
+	static Result userAbort() { return make(4); }
 };
 
 class FeatureError {

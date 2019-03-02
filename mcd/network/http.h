@@ -267,13 +267,9 @@ public:
 		safeRelease(&m_session);
 	}
 
-	void abortPrevious()
+	void abort()
 	{
-		m_statusCode = 0;
-		m_responseHeaders.clear();
-
-		m_contentLength = (uint32_t)-1;
-		m_connect.release();
+		abortPrevious();
 	}
 
 	Result open(ConStrRef url, ConStrRef verb)
@@ -321,6 +317,15 @@ public:
 	}
 
 private:
+	void abortPrevious()
+	{
+		m_statusCode = 0;
+		m_responseHeaders.clear();
+
+		m_contentLength = (uint32_t)-1;
+		m_connect.release();
+	}
+
 	Result receiveResponse()
 	{
 		// get status code

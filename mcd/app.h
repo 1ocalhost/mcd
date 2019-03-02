@@ -54,6 +54,123 @@ inline std::string errorString(DWORD code, PCWSTR module = L"")
 	return result;
 }
 
+class AbortSignal
+{
+public:
+	typedef std::function<void()> AbortFn;
+
+	class Guard
+	{
+	public:
+		Guard(AbortSignal* signal, AbortFn fn) :
+			m_signal(signal)
+		{
+			*m_signal = fn;
+		}
+
+		~Guard()
+		{
+			*m_signal = AbortFn();
+		}
+
+	private:
+		AbortSignal* m_signal;
+	};
+
+	void trigger()
+	{
+		MutexGuard guard(&m_mutex);
+		m_didAborted = true;
+		if (m_abortFn)
+			m_abortFn();
+	}
+
+	bool didAborted() const { return m_didAborted; }
+
+	void clear()
+	{
+		m_didAborted = false;
+		m_abortFn = {};
+	}
+
+private:
+	void operator= (AbortFn fn)
+	{
+		MutexGuard guard(&m_mutex);
+		m_abortFn = fn;
+		if (fn && m_didAborted)
+			fn();
+	}
+
+	AbortFn m_abortFn;
+	bool m_didAborted = false;
+	Mutex m_mutex;
+};
+
+class Promise
+{
+public:
+	typedef std::function<Result(AbortSignal*)> JobFn;
+	typedef std::function<void(Result)> FinishFn;
+
+	Promise() {}
+
+	Promise(JobFn job)
+	{
+		m_job = job;
+	}
+
+	Promise& onFinish(FinishFn fn)
+	{
+		m_onFinish = fn;
+		return *this;
+	}
+
+	operator bool()
+	{
+		return (bool)m_job;
+	}
+
+	void run(AbortSignal* signal)
+	{
+		std::thread([this, signal]() {
+			Result r = m_job(signal);
+			if (signal->didAborted())
+				r = InternalError::userAbort();
+
+			m_onFinish(r);
+			m_job = {};
+			signal->clear();
+		}).detach();
+	}
+
+private:
+	JobFn m_job;
+	FinishFn m_onFinish;
+};
+
+class AsyncController
+{
+public:
+	void start(Promise job)
+	{
+		assert(!m_job);
+		m_job = job;
+		m_job.run(&m_signal);
+	}
+
+	void abort()
+	{
+		assert(m_job);
+		m_signal.trigger();
+	}
+
+private:
+	Promise m_job;
+	AbortSignal m_signal;
+};
+
+
 class App : public View
 {
 private:
@@ -65,24 +182,26 @@ private:
 	void onDownload() override
 	{
 		uiUrl = encodeUri(trim(uiUrl));
-		//Result r = startDownload(uiUrl, uiConnNum, httpConfig());
-
-		//if (r.failed()) {
-		//	showError(r);
-		//}
-
-		//cpState.update(r.ok() ? UiState::Working : UiState::Ready);
-
-
 		comState.update(UiState::Working);
+
+		m_asyncController.start(
+			Promise([&](AbortSignal* abort) {
+				return startDownload(abort);
+			})
+			.onFinish([&](Result r) {
+				comState.update(UiState::Ready);
+				showError(r);
+			})
+		);
 	}
 
 	void onAbort() override
 	{
-		comState.update(UiState::Ready);
+		comState.update(UiState::Aborting);
+		m_asyncController.abort();
 	}
 
-	HttpConfig httpConfig()
+	HttpConfig userConfig()
 	{
 		HttpConfig config;
 
@@ -106,6 +225,9 @@ private:
 
 	void showError(const Result& r)
 	{
+		if (r.ok() || r.is(InternalError::userAbort))
+			return;
+
 		std::stringstream ss;
 		ss << "Error: " << r.space() << "." << r.code();
 
@@ -119,13 +241,17 @@ private:
 	}
 
 	static Result checkUrlSupportRange(ConStrRef url,
-		const HttpConfig& config)
+		const HttpConfig& config, AbortSignal* abort)
 	{
 		_must_not(config.hasHeader("Range"));
 		HttpConfig config_(config);
 		config_.addHeader("Range: bytes=0-");
 
 		HttpGetRequest http;
+		AbortSignal::Guard asg(abort, [&]() {
+			http.abort();
+		});
+
 		_call(http.init(config_));
 		_call(http.open(url));
 
@@ -139,17 +265,23 @@ private:
 		return {};
 	}
 
-	Result startDownload(ConStrRef url, int connNum = 1,
-		HttpConfig config = HttpConfig())
+	Result startDownload(AbortSignal* abort)
 	{
+		ConStrRef url = uiUrl;
+		int connNum = uiConnNum;
+		HttpConfig config = userConfig();
+
 		_must(inRange(connNum, 1, 50), connNum);
 		if (connNum > 1)
-			_call(checkUrlSupportRange(url, config));
+			_call(checkUrlSupportRange(url, config, abort));
 
-		//DownloadTask(url, connNum);
+		//DoDownloadStuff(url, connNum);
 		comUtil.info("OK");
 		return {};
 	}
+
+private:
+	AsyncController m_asyncController;
 };
 
 END_NAMESPACE_MCD
