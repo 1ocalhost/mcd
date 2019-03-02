@@ -321,7 +321,7 @@ public:
 	{
 		m_binding = binding;
 		m_binding->subscribe(
-			[=](ConStrRef from, ConStrRef to) {
+			[this](ConStrRef from, ConStrRef to) {
 			if (from != to && guiText() != to)
 				setGuiText(to);
 		});
@@ -355,6 +355,10 @@ private:
 class RandomProgressCtrl : public BaseCtrl
 {
 public:
+	typedef RandomProgressCtrl Self;
+	typedef GuiRandomProgress::Model Model;
+	typedef UiBinding<Model> *BindingType;
+
 	RandomProgressCtrl(Layout::Style style, int width = 0) :
 		BaseCtrl(style, width) {}
 
@@ -370,9 +374,22 @@ public:
 		m_ctrl.attach(hwnd());
 	}
 
+	Self* bindModel(BindingType binding)
+	{
+		m_binding = binding;
+		m_binding->subscribe(
+			[this](const Model& from, const Model& to) {
+			UNUSED(from);
+			UNUSED(to);
+			m_ctrl.update(m_binding->get());
+		});
+
+		return this;
+	}
+
 private:
 	GuiRandomProgress::Control m_ctrl;
-	char m_data[1000/8];
+	BindingType m_binding = nullptr;
 };
 
 class SpacingCtrl : public BaseCtrl
@@ -466,7 +483,7 @@ public:
 	{
 		m_binding = binding;
 		m_binding->subscribe(
-			[=](const int& from, const int& to) {
+			[this](const int& from, const int& to) {
 			if (from != to)
 				setChecked(to);
 		});
@@ -537,7 +554,7 @@ public:
 	{
 		m_binding = binding;
 		m_binding->subscribe(
-			[=](ConStrRef from, ConStrRef to) {
+			[this](ConStrRef from, ConStrRef to) {
 			if (from != to && guiText() != to)
 				setGuiText(to);
 		});
@@ -548,7 +565,7 @@ public:
 	EditCtrl* bindEnabled(CheckBoxCtrl* ctrl)
 	{
 		m_bindEnabled = ctrl;
-		ctrl->whenStateUpdated([=]() {
+		ctrl->whenStateUpdated([this]() {
 			setEnabled(m_bindEnabled->modelValue());
 		});
 
@@ -659,7 +676,7 @@ public:
 
 		m_binding = binding;
 		m_binding->subscribe(
-			[=](const int& from, const int& to) {
+			[this](const int& from, const int& to) {
 				UNUSED(from);
 				m_proxy = toString(to);
 		});

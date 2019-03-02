@@ -236,6 +236,8 @@ T* create(P... args)
 class View
 {
 public:
+	typedef RandomProgressCtrl::Model RPCM;
+
 	View() :
 		m_window(uiLayout(), 500, "MCD"),
 		comState(&m_window),
@@ -332,6 +334,7 @@ private:
 			},
 			{
 				create<RandomProgressCtrl>(Layout::Fill)
+					->bindModel(&uiProgress)
 			},
 			{
 				create<TextCtrl>(Layout::Fill)
@@ -351,6 +354,7 @@ private:
 		uiChkUserAgent = false;
 		uiChkCookie = false;
 
+		uiProgress = RPCM{};
 		uiStatusText = "23% Got, 1.12 MiB/s.";
 
 		comState.onWaiting(std::bind(&View::onWaiting, this, _1));
@@ -421,6 +425,7 @@ public:
 	UiBinding<bool> uiChkUserAgent;
 	UiBinding<bool> uiChkCookie;
 
+	UiBinding<RPCM> uiProgress;
 	UiBinding<std::string> uiStatusText;
 
 	// methods

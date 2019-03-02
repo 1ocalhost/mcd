@@ -686,6 +686,8 @@ public:
 	MutexGuard(Mutex* mutex) : lock_guard(*mutex) {}
 };
 
+typedef std::pair<int, int> Range;
+
 using namespace StringUtil;
 using namespace StringEncoder;
 

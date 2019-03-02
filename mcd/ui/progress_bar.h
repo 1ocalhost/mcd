@@ -7,6 +7,8 @@ BEGIN_NAMESPACE_MCD
 
 namespace GuiRandomProgress {
 
+
+
 class Palette
 {
 public:
@@ -38,13 +40,8 @@ public:
 		SelectObject(m_dc.get(), m_bmp.get());
 	}
 
-	void fillRect(Point start, Size size, HBRUSH brush)
+	void fillRect(RECT rect, HBRUSH brush)
 	{
-		RECT rect;
-		rect.left = start.x();
-		rect.top = start.y();
-		rect.right = size.width();
-		rect.bottom = size.height();
 		FillRect(m_dc.get(), &rect, brush);
 	}
 
@@ -60,68 +57,6 @@ private:
 	Size m_size;
 	ResGuard::GdiBitmap m_bmp;
 	ResGuard::GdiDeleteDc m_dc;
-};
-
-class Painter
-{
-public:
-	Painter(HDC hdc, const Palette& palette) :
-		m_hdc(hdc), m_palette(palette) {}
-
-	void drawBorder(const RECT& rect)
-	{
-		LONG right = rect.right - 1;
-		LONG bottom = rect.bottom - 1;
-		drawBorderByPoints({
-			{0, 0},
-			{right, 0},
-			{right, bottom},
-			{0, bottom}
-		});
-	}
-
-	void drawBackground(const RECT& rect)
-	{
-		Size size = { rect.right - 2, rect.bottom - 2 };
-		MemoryDC mem(m_hdc, size);
-
-		mem.fillRect({}, size, m_palette.background());
-		mem.fillRect({50, 0}, {130, size.height()}, m_palette.done());
-		mem.fillRect({132, 0}, {140, size.height()}, m_palette.done());
-		mem.fillRect({200, 0}, {500, size.height()}, m_palette.done());
-		mem.copyToDst({1, 1});
-	}
-
-private:
-	void drawBorderByPoints(std::initializer_list<POINT> points)
-	{
-		HBRUSH color = m_palette.border();
-		auto it = points.begin();
-		POINT pre = *it;
-		for (++it; it != points.end(); ++it) {
-			drawLine(pre, *it, color);
-			pre = *it;
-		}
-
-		drawLine(pre, *points.begin(), color);
-	}
-
-	void drawLine(POINT a, POINT b, HBRUSH color)
-	{
-		if (a.y == b.y) {
-			MaxMinValue<LONG> v = { a.x, b.x };
-			RECT rect = { v.min() + 1, a.y, v.max(), a.y + 1 };
-			FillRect(m_hdc, &rect, color);
-		}
-		else if (a.x == b.x) {
-			MaxMinValue<LONG> v = { a.y, b.y };
-			RECT rect = { a.x, v.min() + 1, a.x + 1, v.max() };
-			FillRect(m_hdc, &rect, color);
-		}
-	}
-
-	HDC m_hdc;
-	const Palette& m_palette;
 };
 
 class ControlClass
@@ -151,6 +86,92 @@ private:
 	}
 };
 
+typedef std::vector<Range> Model;
+constexpr int kMaxRange = 1000;
+
+class Painter
+{
+public:
+	Painter(HDC hdc, const Palette& palette, const Model* model) :
+		m_hdc(hdc), m_palette(palette), m_model(model) {}
+
+	void drawBorder(const RECT& rect)
+	{
+		LONG right = rect.right - 1;
+		LONG bottom = rect.bottom - 1;
+		drawBorderByPoints({
+			{0, 0},
+			{right, 0},
+			{right, bottom},
+			{0, bottom}
+		});
+	}
+
+	void drawContent(const RECT& rect)
+	{
+		Size s = {rect.right - 2, rect.bottom - 2};
+		MemoryDC dc(m_hdc, s);
+
+		dc.fillRect({0, 0, s.width(), s.height()},
+			m_palette.background());
+		drawModel(&dc, s);
+		dc.copyToDst({1, 1});
+	}
+
+private:
+	void drawModel(MemoryDC* dc, Size s)
+	{
+		const int bottom = s.height();
+		const double rate = s.width() / (double)kMaxRange;
+
+		if (!m_model)
+			return;
+
+		for (auto i : *m_model) {
+			if (i.first > kMaxRange || i.second > kMaxRange) {
+				assert(0);
+				break;
+			}
+
+			int left = (int)(i.first * rate);
+			int right = (int)(i.second * rate);
+			dc->fillRect({left, 0, right, bottom},
+				m_palette.done());
+		}
+	}
+
+	void drawBorderByPoints(std::initializer_list<POINT> points)
+	{
+		HBRUSH color = m_palette.border();
+		auto it = points.begin();
+		POINT pre = *it;
+		for (++it; it != points.end(); ++it) {
+			drawLine(pre, *it, color);
+			pre = *it;
+		}
+
+		drawLine(pre, *points.begin(), color);
+	}
+
+	void drawLine(POINT a, POINT b, HBRUSH color)
+	{
+		if (a.y == b.y) {
+			MaxMinValue<LONG> v = { a.x, b.x };
+			RECT rect = { v.min() + 1, a.y, v.max(), a.y + 1 };
+			FillRect(m_hdc, &rect, color);
+		}
+		else if (a.x == b.x) {
+			MaxMinValue<LONG> v = { a.y, b.y };
+			RECT rect = { a.x, v.min() + 1, a.x + 1, v.max() };
+			FillRect(m_hdc, &rect, color);
+		}
+	}
+
+	HDC m_hdc;
+	const Palette& m_palette;
+	const Model* m_model = nullptr;
+};
+
 class Control
 {
 public:
@@ -168,6 +189,14 @@ public:
 		m_hwnd = hwnd;
 		SetWindowLongPtr(hwnd, GWLP_WNDPROC,
 			(LONG_PTR)m_thunk.GetCodeAddress());
+	}
+
+	void update(const Model& m)
+	{
+		m_model = &m;
+
+		if (m_hwnd)
+			InvalidateRect(m_hwnd, NULL, TRUE);
 	}
 
 private:
@@ -192,12 +221,12 @@ private:
 	{
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(hwnd, &ps);
-		Painter painter(hdc, m_palette);
+		Painter painter(hdc, m_palette, m_model);
 
 		RECT rect = {0};
 		GetClientRect(hwnd, &rect);
 		painter.drawBorder(rect);
-		painter.drawBackground(rect);
+		painter.drawContent(rect);
 
 		EndPaint(hwnd, &ps);
 	}
@@ -205,6 +234,7 @@ private:
 	ATL::CStdCallThunk m_thunk;
 	HWND m_hwnd = NULL;
 	Palette m_palette;
+	const Model* m_model = nullptr;
 };
 
 } // namespace GuiRandomProgress
