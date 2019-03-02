@@ -503,6 +503,12 @@ std::string encodeUriImpl(const std::string& str)
 	return ss.str();
 }
 
+template <class T, class R, class... P>
+R callMemberWithNull(R(T::*m)(P...), P... p)
+{
+	return (static_cast<T*>(nullptr)->*m)(p...);
+}
+
 } // namespace _private
 
 inline std::string encodeUri(ConStrRef str)
@@ -516,6 +522,19 @@ inline std::string encodeUriComponent(ConStrRef str)
 }
 
 } // StringEncoder
+
+#define DEF_SINGLETON_METHOD() \
+private: \
+	auto& _getSingletonImpl() \
+	{ \
+		static std::decay<decltype(*this)>::type obj; \
+		return obj; \
+	} \
+public: \
+	static auto& get() \
+	{ \
+		return _private::callMemberWithNull(&_getSingletonImpl); \
+	}
 
 template <class T>
 class MaxMinValue

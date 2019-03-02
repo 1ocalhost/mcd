@@ -364,12 +364,14 @@ public:
 
 	void create(Point pos) override
 	{
-		const int a = sizeof(char);
-		createWindow(pos, GuiRandomProgress::Control::className(), "");
-		setWindowLong(GWLP_USERDATA, (LONG_PTR)m_data);
+		using namespace GuiRandomProgress;
+		ControlClass::get(); // initialize window class
+		createWindow(pos, ControlClass::name(), "");
+		m_ctrl.attach(hwnd());
 	}
 
 private:
+	GuiRandomProgress::Control m_ctrl;
 	char m_data[1000/8];
 };
 

@@ -1,7 +1,5 @@
 #pragma once
 #include "control.h"
-#include <atlbase.h>
-#include <atlstdthunk.h>
 
 BEGIN_NAMESPACE_MCD
 
@@ -172,8 +170,6 @@ public:
 
 	int run(int showState)
 	{
-		GuiRandomProgress::Control::get(); // initialize
-
 		if (!createMainWindow())
 			return -1;
 
@@ -201,13 +197,13 @@ public:
 	}
 
 private:
-	static LRESULT CALLBACK _windowProc(
+	static LRESULT _windowProc(
 		Window* that, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		return that->windowProc(uMsg, wParam, lParam);
 	}
 
-	LRESULT CALLBACK windowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
+	LRESULT windowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		switch (uMsg)
 		{

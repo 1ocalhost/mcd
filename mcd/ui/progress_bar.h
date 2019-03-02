@@ -1,5 +1,7 @@
 #pragma once
 #include "../infra/guard.h"
+#include <atlbase.h>
+#include <atlstdthunk.h>
 
 BEGIN_NAMESPACE_MCD
 
@@ -8,17 +10,6 @@ namespace GuiRandomProgress {
 class Palette
 {
 public:
-	static Palette& get()
-	{
-		static Palette obj;
-		return obj;
-	}
-
-	HBRUSH border() const { return m_border.get(); }
-	HBRUSH background() const { return m_background.get(); }
-	HBRUSH done() const { return m_done.get(); }
-
-private:
 	Palette()
 	{
 		m_border = CreateSolidBrush(RGB(85, 123, 21));
@@ -26,6 +17,11 @@ private:
 		m_done = CreateSolidBrush(RGB(113, 164, 28));
 	}
 
+	HBRUSH border() const { return m_border.get(); }
+	HBRUSH background() const { return m_background.get(); }
+	HBRUSH done() const { return m_done.get(); }
+
+private:
 	ResGuard::GdiBrush m_border;
 	ResGuard::GdiBrush m_background;
 	ResGuard::GdiBrush m_done;
@@ -69,10 +65,8 @@ private:
 class Painter
 {
 public:
-	Painter(HDC hdc)
-	{
-		m_hdc = hdc;
-	}
+	Painter(HDC hdc, const Palette& palette) :
+		m_hdc(hdc), m_palette(palette) {}
 
 	void drawBorder(const RECT& rect)
 	{
@@ -90,19 +84,18 @@ public:
 	{
 		Size size = { rect.right - 2, rect.bottom - 2 };
 		MemoryDC mem(m_hdc, size);
-		auto& p = Palette::get();
 
-		mem.fillRect({}, size, p.background());
-		mem.fillRect({50, 0}, {130, size.height()}, p.done());
-		mem.fillRect({132, 0}, {140, size.height()}, p.done());
-		mem.fillRect({200, 0}, {500, size.height()}, p.done());
+		mem.fillRect({}, size, m_palette.background());
+		mem.fillRect({50, 0}, {130, size.height()}, m_palette.done());
+		mem.fillRect({132, 0}, {140, size.height()}, m_palette.done());
+		mem.fillRect({200, 0}, {500, size.height()}, m_palette.done());
 		mem.copyToDst({1, 1});
 	}
 
 private:
 	void drawBorderByPoints(std::initializer_list<POINT> points)
 	{
-		HBRUSH color = Palette::get().border();
+		HBRUSH color = m_palette.border();
 		auto it = points.begin();
 		POINT pre = *it;
 		for (++it; it != points.end(); ++it) {
@@ -128,55 +121,78 @@ private:
 	}
 
 	HDC m_hdc;
+	const Palette& m_palette;
+};
+
+class ControlClass
+{
+public:
+	static PCWSTR name()
+	{
+		return L"RandomProgressBar";
+	}
+
+	DEF_SINGLETON_METHOD()
+
+private:
+	ControlClass()
+	{
+		WNDCLASS wc = { 0 };
+		wc.style = CS_GLOBALCLASS | CS_HREDRAW | CS_VREDRAW;
+		wc.lpfnWndProc = DefWindowProc;
+		wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+		wc.lpszClassName = name();
+		RegisterClass(&wc);
+	}
+
+	~ControlClass()
+	{
+		UnregisterClass(name(), NULL);
+	}
 };
 
 class Control
 {
 public:
-	static PCWSTR className()
+	Control()
 	{
-		return L"RandomProgressBar";
+		m_thunk.Init((DWORD_PTR)_windowProc, this);
 	}
 
-	static Control& get()
+	void attach(HWND hwnd)
 	{
-		static Control obj;
-		return obj;
+		assert(hwnd);
+		if (!hwnd)
+			return;
+
+		m_hwnd = hwnd;
+		SetWindowLongPtr(hwnd, GWLP_WNDPROC,
+			(LONG_PTR)m_thunk.GetCodeAddress());
 	}
 
 private:
-	Control()
+	static LRESULT _windowProc(
+		Control* that, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
-		WNDCLASS wc = { 0 };
-		wc.style = CS_GLOBALCLASS | CS_HREDRAW | CS_VREDRAW;
-		wc.lpfnWndProc = ctrlProc;
-		wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-		wc.lpszClassName = className();
-		RegisterClass(&wc);
+		return that->windowProc(uMsg, wParam, lParam);
 	}
 
-	~Control()
-	{
-		UnregisterClass(className(), NULL);
-	}
-
-	static LRESULT CALLBACK ctrlProc(
-		HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+	LRESULT windowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		switch (uMsg) {
 		case WM_PAINT:
-			customPaint(hwnd);
+			customPaint(m_hwnd);
 			return 0;
 		}
 
-		return DefWindowProc(hwnd, uMsg, wParam, lParam);
+		return DefWindowProc(m_hwnd, uMsg, wParam, lParam);
 	}
 
-	static void customPaint(HWND hwnd)
+	void customPaint(HWND hwnd)
 	{
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(hwnd, &ps);
-		Painter painter(hdc);
+		Painter painter(hdc, m_palette);
 
 		RECT rect = {0};
 		GetClientRect(hwnd, &rect);
@@ -185,6 +201,10 @@ private:
 
 		EndPaint(hwnd, &ps);
 	}
+
+	ATL::CStdCallThunk m_thunk;
+	HWND m_hwnd = NULL;
+	Palette m_palette;
 };
 
 } // namespace GuiRandomProgress

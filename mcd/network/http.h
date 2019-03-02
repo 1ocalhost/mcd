@@ -251,7 +251,7 @@ private:
 class HttpRequest : public IMetaViewer
 {
 public:
-	Result init(const HttpConfig& config)
+	Result init(const HttpConfig& config = {})
 	{
 		m_headers = config.headers();
 		HINTERNET session;
@@ -321,8 +321,12 @@ private:
 	{
 		m_statusCode = 0;
 		m_responseHeaders.clear();
-
 		m_contentLength = (uint32_t)-1;
+
+		// ERROR_INTERNET_OPERATION_CANCELLED (12017)
+		//   The operation was canceled, usually because the handle on
+		//   which the request was operating was closed before the
+		//   operation completed.
 		m_connect.release();
 	}
 
