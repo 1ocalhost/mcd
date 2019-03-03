@@ -1,5 +1,6 @@
 #pragma once
 #include "../infra/guard.h"
+#include <ShlObj_core.h> // ILCreateFromPath
 
 BEGIN_NAMESPACE_MCD
 
@@ -70,6 +71,21 @@ inline Rect curScreenRect()
 	}
 
 	return mix.rcMonitor;
+}
+
+inline void browseToFile(ConStrRef path)
+{
+	ITEMIDLIST *pidl = ILCreateFromPath(u8to16(path));
+	if (pidl) {
+		SHOpenFolderAndSelectItems(pidl, 0, 0, 0);
+		SHBrowseForFolder(pidl);
+		ILFree(pidl);
+	}
+}
+
+inline bool fileExists(ConStrRef path) {
+	struct _stat s;
+	return (_wstat(u8to16(path), &s) == 0);
 }
 
 class AbortSignal

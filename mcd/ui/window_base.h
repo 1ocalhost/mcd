@@ -204,7 +204,7 @@ public:
 
 	void revealPath(ConStrRef path) const
 	{
-		ShellExecute(NULL, L"open", u8to16(path),
+		ShellExecute(hwnd(), L"open", u8to16(path),
 			NULL, NULL, SW_SHOWDEFAULT);
 	}
 

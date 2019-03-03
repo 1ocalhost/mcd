@@ -85,6 +85,12 @@ inline void sleep(double seconds)
 			static_cast<int>(1000 * seconds)));
 }
 
+inline void clear(std::stringstream* ss)
+{
+	ss->clear();
+	ss->str({});
+}
+
 typedef const std::string& ConStrRef;
 typedef const std::wstring& ConWStrRef;
 

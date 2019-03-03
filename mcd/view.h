@@ -317,12 +317,6 @@ private:
 		uiConnNum = value;
 	}
 
-	void onRevealFolder()
-	{
-		if (uiSavingPath.get().size())
-			window.revealPath(uiSavingPath);
-	}
-
 	void onSelectFolder()
 	{
 		uiSavingPath = window.browseForFolder();
@@ -366,6 +360,7 @@ public:
 
 	// methods
 	virtual bool onQuit() = 0;
+	virtual void onRevealFolder() = 0;
 	virtual void onDownload() = 0;
 	virtual void onAbort() = 0;
 

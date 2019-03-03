@@ -29,6 +29,14 @@ private:
 		return window.ask("Quit?", false);
 	}
 
+	void onRevealFolder() override
+	{
+		if (m_preFilePath.size())
+			browseToFile(m_preFilePath);
+		else if (uiSavingPath.get().size())
+			window.revealPath(uiSavingPath);
+	}
+
 	void onDownload() override
 	{
 		comState.update(UiState::Working);
@@ -125,7 +133,7 @@ private:
 		std::stringstream ss;
 		ss << "(" << number << ")";
 		std::string number_ = ss.str();
-		ss.clear();
+		clear(&ss);
 
 		std::cmatch result;
 		std::regex rule(R"((.*)\.([^\.]*)$)");
@@ -142,30 +150,40 @@ private:
 		return ss.str();
 	}
 
-	Result buildSavingPath(std::ofstream* ofs)
+	Result buildSavingPath(std::string* savingPath)
 	{
-		std::string path = uiSavingPath.get() + baseName(uiUrl);
-		ofs->open(path, std::ios::binary);
-		if (ofs->good())
-			return {};
+		std::string path = uiSavingPath.get();
+		path += "\\";
+		path += baseName(uiUrl);
 
-		std::string path_;
-		for (int i : range(0, 100)) {
-			path_ = renameFilePath(path, i);
-			ofs->open(path_, std::ios::binary);
-			if (ofs->good())
-				break;
+		if (!fileExists(path)) {
+			*savingPath = path;
+			return {};
 		}
 
-		_must(ofs->good(), path);
+		std::string path_;
+		for (int i : range(1, 200)) {
+			path_ = renameFilePath(path, i);
+			if (!fileExists(path_)) {
+				*savingPath = path_;
+				return {};
+			}
+		}
+
+		_must(false, path_);
 		return {};
 	}
 
 	Result doDownloadStuff(ConStrRef url, int connNum, AbortSignal* abort)
 	{
-		std::ofstream ofs;
-		_call(buildSavingPath(&ofs));
+		std::string path;
+		_call(buildSavingPath(&path));
 
+		std::ofstream ofs;
+		ofs.open(path, std::ios::binary);
+		_must(ofs.good());
+
+		m_preFilePath = path;
 
 		//std::string fileName = baseName(uiUrl);
 		//uiSavingPath.get() + fileName
@@ -212,6 +230,7 @@ private:
 	}
 
 private:
+	std::string m_preFilePath;
 	AsyncController m_asyncController;
 };
 
