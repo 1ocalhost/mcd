@@ -59,5 +59,11 @@
     <ClInclude Include="infra\ward.h">
       <Filter>Header Files\infra</Filter>
     </ClInclude>
+    <ClInclude Include="ui\window_base.h">
+      <Filter>Header Files\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="ui\kit.h">
+      <Filter>Header Files\ui</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

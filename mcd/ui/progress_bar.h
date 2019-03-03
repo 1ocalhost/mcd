@@ -7,8 +7,6 @@ BEGIN_NAMESPACE_MCD
 
 namespace GuiRandomProgress {
 
-
-
 class Palette
 {
 public:
@@ -24,9 +22,9 @@ public:
 	HBRUSH done() const { return m_done.get(); }
 
 private:
-	ResGuard::GdiBrush m_border;
-	ResGuard::GdiBrush m_background;
-	ResGuard::GdiBrush m_done;
+	Guard::GdiBrush m_border;
+	Guard::GdiBrush m_background;
+	Guard::GdiBrush m_done;
 };
 
 class MemoryDC
@@ -55,8 +53,8 @@ public:
 private:
 	HDC m_dst;
 	Size m_size;
-	ResGuard::GdiBitmap m_bmp;
-	ResGuard::GdiDeleteDc m_dc;
+	Guard::GdiBitmap m_bmp;
+	Guard::GdiDeleteDc m_dc;
 };
 
 class ControlClass
@@ -86,7 +84,7 @@ private:
 	}
 };
 
-typedef std::vector<Range> Model;
+typedef std::vector<Range<>> Model;
 constexpr int kMaxRange = 1000;
 
 class Painter

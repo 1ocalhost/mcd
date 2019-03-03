@@ -15,6 +15,7 @@
 #include <array>
 #include <thread>
 #include <mutex>
+#include <fstream>
 
 #define KB(value) ((value) * 1024)
 #define MB(value) (KB(value) * 1024)
@@ -285,6 +286,16 @@ inline std::string trim(ConStrRef s)
 	return s_;
 }
 
+inline std::string baseName(const std::string& path)
+{
+	std::cmatch result;
+	std::regex rule(R"((?:/|\\)([^/\\]+)$)");
+	if (std::regex_search(path.c_str(), result, rule))
+		return result[1];
+
+	return path;
+}
+
 } // namespace StringUtil
 
 namespace StringParser {
@@ -469,10 +480,8 @@ inline bool isUriSeparatorChar(unsigned char ch)
 	return std::find(t, end, ch) != end;
 }
 
-namespace _private {
-
 template <bool tIgnoreSeparatorChar = true>
-std::string encodeUriImpl(const std::string& str)
+std::string _encodeUriImpl(const std::string& str)
 {
 	const bool isc = tIgnoreSeparatorChar;
 	std::stringstream ss;
@@ -503,25 +512,23 @@ std::string encodeUriImpl(const std::string& str)
 	return ss.str();
 }
 
-template <class T, class R, class... P>
-R callMemberWithNull(R(T::*m)(P...), P... p)
-{
-	return (static_cast<T*>(nullptr)->*m)(p...);
-}
-
-} // namespace _private
-
 inline std::string encodeUri(ConStrRef str)
 {
-	return _private::encodeUriImpl<true>(str);
+	return _encodeUriImpl<true>(str);
 }
 
 inline std::string encodeUriComponent(ConStrRef str)
 {
-	return _private::encodeUriImpl<false>(str);
+	return _encodeUriImpl<false>(str);
 }
 
 } // StringEncoder
+
+template <class T, class R, class... P>
+R _callMemberWithNull(R(T::*m)(P...), P... p)
+{
+	return (static_cast<T*>(nullptr)->*m)(p...);
+}
 
 #define DEF_SINGLETON_METHOD() \
 private: \
@@ -533,7 +540,7 @@ private: \
 public: \
 	static auto& get() \
 	{ \
-		return _private::callMemberWithNull(&_getSingletonImpl); \
+		return _callMemberWithNull(&_getSingletonImpl); \
 	}
 
 template <class T>
@@ -554,6 +561,31 @@ private:
 	T m_min;
 };
 
+template <class T=int>
+class Range : public std::pair<T, T>
+{
+public:
+	typedef std::pair<T, T> Base;
+
+	struct Iterator
+	{
+		Iterator(T n) : m_n(n) {}
+		Iterator operator ++() { ++m_n; return *this; }
+		bool operator !=(const Iterator& r) const { return m_n != *r; }
+		T operator*() const { return m_n; }
+		T m_n;
+	};
+
+	Range(T begin, T end) : Base(begin, end) {}
+	Iterator begin() const { return Iterator(this->first); }
+	Iterator end() const { return Iterator(this->second); }
+};
+
+template <class T>
+constexpr Range<T> range(T begin, T end)
+{
+	return {begin, end};
+}
 
 class Bool
 {
@@ -663,6 +695,14 @@ public:
 		m_bottom = rect.bottom;
 	}
 
+	Rect(Size size)
+	{
+		m_left = 0;
+		m_top = 0;
+		m_right = size.width();
+		m_bottom = size.height();
+	}
+
 	int left() const { return m_left; }
 	int top() const { return m_top; }
 	int right() const { return m_right; }
@@ -671,6 +711,20 @@ public:
 	int width() const { return right() - left(); }
 	int height() const { return bottom() - top(); }
 
+	Point center(Size inner) const
+	{
+		return {(right() + left() - inner.width()) / 2,
+			(bottom() + top() - inner.height()) / 2 };
+	}
+
+	void move(int x, int y)
+	{
+		m_left += x;
+		m_top += y;
+		m_right += x;
+		m_bottom += y;
+	}
+
 private:
 	int m_left = 0;
 	int m_top = 0;
@@ -678,19 +732,8 @@ private:
 	int m_bottom = 0;
 };
 
-typedef std::mutex Mutex;
-
-class MutexGuard : public std::lock_guard<std::mutex>
-{
-public:
-	MutexGuard(Mutex* mutex) : lock_guard(*mutex) {}
-};
-
-typedef std::pair<int, int> Range;
-
 using namespace StringUtil;
 using namespace StringEncoder;
-
 using namespace std::placeholders;
 
 END_NAMESPACE_MCD

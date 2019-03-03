@@ -125,8 +125,10 @@
     <ClInclude Include="network\http.h" />
     <ClInclude Include="network\http_api.h" />
     <ClInclude Include="ui\control.h" />
+    <ClInclude Include="ui\kit.h" />
     <ClInclude Include="ui\progress_bar.h" />
     <ClInclude Include="ui\window.h" />
+    <ClInclude Include="ui\window_base.h" />
     <ClInclude Include="view.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

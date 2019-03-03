@@ -1,6 +1,5 @@
 #pragma once
 #include "ui/window.h"
-#include <Shlobj.h> // SHBrowseForFolder
 
 BEGIN_NAMESPACE_MCD
 
@@ -158,75 +157,6 @@ private:
 	OnWaittingFn m_onWaiting;
 };
 
-class UiUtil
-{
-public:
-	UiUtil(const Window* window) : m_window(*window)
-	{
-	}
-
-	HWND hwnd() const
-	{
-		return m_window.hwnd();
-	}
-
-	void info(ConStrRef msg, ConStrRef title = {}) const
-	{
-		messageBox(msg, title, MB_ICONINFORMATION | MB_OK);
-	}
-
-	void error(ConStrRef msg, ConStrRef title = {}) const
-	{
-		messageBox(msg, title, MB_ICONERROR | MB_OK);
-	}
-
-	bool ask(ConStrRef msg, bool defaultBtn = true, ConStrRef title = {}) const
-	{
-		DWORD extraFlag = defaultBtn ? MB_DEFBUTTON1 : MB_DEFBUTTON2;
-		return IDYES == messageBox(msg, title,
-			extraFlag | MB_ICONQUESTION | MB_YESNO);
-	}
-
-	std::string browseForFolder(ConStrRef title = "") const
-	{
-		std::wstring title16 = u8to16(title);
-
-		TCHAR szDir[MAX_PATH];
-		BROWSEINFO bInfo;
-		bInfo.hwndOwner = hwnd();
-		bInfo.pidlRoot = NULL;
-		bInfo.pszDisplayName = szDir;
-		bInfo.lpszTitle = title16.c_str();
-		bInfo.ulFlags = 0;
-		bInfo.lpfn = NULL;
-		bInfo.lParam = 0;
-		bInfo.iImage = -1;
-
-		LPITEMIDLIST lpItem = SHBrowseForFolder(&bInfo);
-		if (lpItem != NULL)
-		{
-			SHGetPathFromIDList(lpItem, szDir);
-			return u16to8(szDir);
-		}
-
-		return {};
-	}
-
-	void revealPath(ConStrRef path)
-	{
-		ShellExecute(NULL, L"open", u8to16(path),
-			NULL, NULL, SW_SHOWDEFAULT);
-	}
-
-private:
-	int messageBox(ConStrRef msg, ConStrRef title, UINT flags) const
-	{
-		return MessageBox(hwnd(), u8to16(msg), u8to16(title), flags);
-	}
-
-	const Window& m_window;
-};
-
 template <class T, class... P>
 T* create(P... args)
 {
@@ -240,8 +170,7 @@ public:
 
 	View() :
 		m_window(uiLayout(), 500, "MCD"),
-		comState(&m_window),
-		comUtil(&m_window)
+		comState(&m_window)
 	{}
 
 	int run(int showState)
@@ -391,26 +320,33 @@ private:
 	void onRevealFolder()
 	{
 		if (uiSavingPath.get().size())
-			comUtil.revealPath(uiSavingPath);
+			window.revealPath(uiSavingPath);
 	}
 
 	void onSelectFolder()
 	{
-		uiSavingPath = comUtil.browseForFolder();
+		uiSavingPath = window.browseForFolder();
 	}
 
 	void onDownloadClick()
 	{
-		if (comState.curState() == UiState::Ready)
+		if (comState.curState() == UiState::Ready) {
+			uiUrl = encodeUri(trim(uiUrl));
+			if (uiSavingPath.get().empty()) {
+				window.info("Please select a folder to save the file.");
+				return;
+			}
+
 			onDownload();
-		else if (comState.curState() == UiState::Wait)
+		}
+		else if (comState.curState() == UiState::Wait) {
 			onAbort();
+		}
 	}
 
 public:
-	// components
+	const Window& window = m_window;
 	UiState comState;
-	UiUtil comUtil;
 
 	// models
 	UiBinding<std::string> uiUrl;

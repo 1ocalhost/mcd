@@ -1,5 +1,5 @@
 #pragma once
-#include "progress_bar.h"
+#include "window_base.h"
 #include "CommCtrl.h"
 
 BEGIN_NAMESPACE_MCD
@@ -17,105 +17,6 @@ public:
 		Fill,
 		Fixed
 	};
-};
-
-class WindowBase : public InterfaceClass
-{
-public:
-	HWND hwnd() const { return m_hwnd; }
-	void setHwnd(HWND hwnd) { m_hwnd = hwnd; }
-
-	WindowBase* parent() const { return m_parent; }
-	void setParent(WindowBase* parent) { m_parent = parent; }
-
-	HFONT uiFont() const { return m_uiFont; }
-	void setUiFont(HFONT font) { m_uiFont = font; }
-
-	Size calcTextSize(ConStrRef text)
-	{
-		if (parent())
-			return parent()->calcTextSize(text);
-
-		assert(hwnd() && uiFont());
-
-		if (!hwnd())
-			return {};
-
-		if (!uiFont())
-			return {};
-
-		ResGuard::GdiReleaseDc dc(hwnd());
-		SelectObject(dc.get(), uiFont());
-
-		RECT rect = {0};
-		auto text_ = u8to16(text);
-		DrawText(dc.get(), text_, (int)text_.size(), &rect,
-			DT_CALCRECT | DT_NOPREFIX | DT_SINGLELINE);
-
-		return { rect.right, rect.bottom };
-	}
-
-	std::string guiText()
-	{
-		const int kSize = KB(4);
-		std::unique_ptr<WCHAR> guard(new WCHAR[kSize]());
-		GetWindowText(hwnd(), guard.get(), kSize);
-		return u16to8(guard.get());
-	}
-
-	void setGuiText(ConStrRef text)
-	{
-		SetWindowText(hwnd(), u8to16(text));
-	}
-
-	LRESULT sendMessage(UINT msg, WPARAM wParam = 0, LPARAM lParam = 0)
-	{
-		return SendMessage(hwnd(), msg, wParam, lParam);
-	}
-
-	bool enabled()
-	{
-		return Bool(IsWindowEnabled(hwnd()));
-	}
-
-	void setEnabled(bool enabled = true)
-	{
-		EnableWindow(hwnd(), Bool(enabled));
-	}
-
-	LONG_PTR windowLong(int index)
-	{
-		return GetWindowLongPtr(hwnd(), index);
-	}
-
-	LONG_PTR setWindowLong(int index, LONG_PTR value)
-	{
-		return SetWindowLongPtr(hwnd(), index, value);
-	}
-
-	Size clientSize()
-	{
-		RECT rect = {0};
-		GetClientRect(hwnd(), &rect);
-		return {rect.right, rect.bottom};
-	}
-
-	void setClientSize(Size size)
-	{
-		RECT rect = size.toRect();
-		DWORD style = (DWORD)windowLong(GWL_STYLE);
-		AdjustWindowRect(&rect, style, FALSE);
-
-		Rect newRect = rect;
-		SetWindowPos(hwnd(), NULL, 0, 0,
-			newRect.width(), newRect.height(),
-			SWP_NOZORDER | SWP_NOMOVE);
-	}
-
-private:
-	WindowBase* m_parent = nullptr;
-	HWND m_hwnd = NULL;
-	HFONT m_uiFont = NULL;
 };
 
 class BaseCtrl : public WindowBase

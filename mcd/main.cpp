@@ -1,5 +1,4 @@
 #include "app.h"
-#include <errno.h>
 
 #pragma comment(lib, "winhttp")
 #pragma comment(lib, "shlwapi")

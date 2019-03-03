@@ -223,6 +223,10 @@ private:
 				return 0;
 			}
 			break;
+
+		case WM_ACTIVATE:
+			onMsgActivate(LOWORD(wParam), lParam);
+			break;
 		}
 
 		return CallWindowProc(m_defaultWndProc,
@@ -240,16 +244,25 @@ private:
 		}
 	}
 
+	void onMsgActivate(WORD state, LPARAM lParam)
+	{
+		if (state == WA_INACTIVE) {
+			HWND activated = (HWND)lParam;
+			if (childDialog(activated)) {
+				WindowBase(activated).setCenterIn(windowRect());
+			}
+		}
+	}
+
 	bool createMainWindow()
 	{
 		Size size = m_windowSize;
-		POINT pos = calcScreenCenter(size);
 		HWND hwnd = CreateWindowEx(
 			WS_EX_CLIENTEDGE,
 			L"#32770",
 			u8to16(m_windowTitle),
 			WS_OVERLAPPEDWINDOW,
-			pos.x, pos.y,
+			0, 0,
 			size.width(), size.height(),
 			NULL, NULL, GetModuleHandle(NULL), NULL);
 
@@ -274,32 +287,6 @@ private:
 		return (int)msg.wParam;
 	}
 
-	POINT calcScreenCenter(Size window)
-	{
-		POINT cursorPos;
-		GetCursorPos(&cursorPos);
-
-		HMONITOR monitor = MonitorFromPoint(
-			cursorPos, MONITOR_DEFAULTTONEAREST);
-
-		MONITORINFOEX mix;
-		mix.cbSize = sizeof(mix);
-		if (!GetMonitorInfo(monitor, (LPMONITORINFO)&mix)) {
-			_should(false);
-			mix.rcMonitor = {
-				0, 0,
-				GetSystemMetrics(SM_CXSCREEN),
-				GetSystemMetrics(SM_CYSCREEN)
-			};
-		}
-
-		const RECT& screen = mix.rcMonitor;
-		return {
-			(screen.right + screen.left - window.width()) / 2,
-			(screen.bottom + screen.top - window.height()) / 2
-		};
-	}
-
 	bool createControls()
 	{
 		if (!m_typesetter.parse(this))
@@ -307,6 +294,7 @@ private:
 
 		m_windowSize.height(m_typesetter.layoutHeight());
 		setClientSize(m_windowSize);
+		setCenterIn(curScreenRect());
 
 		initChildUiFont();
 		return true;
@@ -335,7 +323,7 @@ private:
 	WNDPROC m_defaultWndProc = NULL;
 
 	Typesetter m_typesetter;
-	ResGuard::GdiFont m_uiFont;
+	Guard::GdiFont m_uiFont;
 
 	Size m_windowSize;
 	std::string m_windowTitle;

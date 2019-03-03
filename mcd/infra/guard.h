@@ -4,7 +4,7 @@
 
 BEGIN_NAMESPACE_MCD
 
-namespace ResGuard {
+namespace Guard {
 
 template <class T>
 using GuardImpl = std::unique_ptr<
@@ -30,8 +30,9 @@ typedef DeleteObjectGuard<HBRUSH> GdiBrush;
 typedef DeleteObjectGuard<HBITMAP> GdiBitmap;
 typedef DeleteObjectGuard<HDC> GdiDeleteDc; // or GdiReleaseDc?
 
-struct GdiReleaseDc
+class GdiReleaseDc
 {
+public:
 	GdiReleaseDc(HWND hwnd) : m_hwnd(hwnd)
 	{
 		m_hdc = GetDC(hwnd);
@@ -47,11 +48,17 @@ struct GdiReleaseDc
 		ReleaseDC(m_hwnd, m_hdc);
 	}
 
+private:
 	HWND m_hwnd;
 	HDC m_hdc;
 };
 
+class Mutex: public std::lock_guard<std::mutex>
+{
+public:
+	Mutex(std::mutex* m) : lock_guard(*m) {}
+};
 
-} // namespace ResGuard
+} // namespace Guard
 
 END_NAMESPACE_MCD

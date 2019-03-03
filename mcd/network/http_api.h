@@ -137,11 +137,11 @@ inline Result connect
 	StringParser::HttpUrl url_(url);
 	_must_or_return(InternalError::invalidInput, url_.valid(), url);
 
-	ResGuard::WinHttp connect = WinHttpConnect(session,
+	Guard::WinHttp connect = WinHttpConnect(session,
 		u8to16(url_.host()), (WORD)url_.port(), NULL);
 	_must_or_return_winhttp_error(connect.get(), url);
 
-	ResGuard::WinHttp request = openRequest(
+	Guard::WinHttp request = openRequest(
 		connect.get(), verb, url_.path(), url_.overSSL());
 	_must_or_return_winhttp_error(request.get(), url);
 
