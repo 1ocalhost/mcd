@@ -8,17 +8,18 @@ class UiState
 public:
 	enum State {
 		Ready,
+		Waiting,
 		Working,
 		Aborting
 	};
 
-	enum Waiting {
+	enum WaitingAnimation {
 		Start,
 		Wait,
 		End
 	};
 
-	typedef std::function<void(Waiting)> OnWaittingFn;
+	typedef std::function<void(WaitingAnimation)> OnWaittingFn;
 
 	UiState(const Window* window) : m_window(*window)
 	{
@@ -29,9 +30,9 @@ public:
 		m_waiting = nullptr;
 	}
 
-	State curState() const
+	bool is(State s) const
 	{
-		return m_curState;
+		return m_curState == s;
 	}
 
 	void update(State s)
@@ -39,7 +40,10 @@ public:
 		if (s == m_curState)
 			return;
 
-		if (s == State::Working) {
+		if (s != State::Waiting)
+			m_waiting = nullptr;
+
+		if (s == State::Waiting) {
 			disableAllCtrl();
 			playWaiting();
 			ctrlByUid("download").setText("Abort");
@@ -49,7 +53,6 @@ public:
 		}
 		else if (s == State::Ready) {
 			restoreCtrlState();
-			m_waiting = nullptr;
 
 			ctrlByUid("download")
 				.setText("Download")
@@ -99,14 +102,14 @@ private:
 
 		m_waiting = new std::thread();
 		*m_waiting = std::thread([&](std::thread* self) {
-			m_onWaiting(Waiting::Start);
+			m_onWaiting(WaitingAnimation::Start);
 
 			do {
-				m_onWaiting(Waiting::Wait);
+				m_onWaiting(WaitingAnimation::Wait);
 				sleep(0.5);
 			} while (m_waiting == self);
 
-			m_onWaiting(Waiting::End);
+			m_onWaiting(WaitingAnimation::End);
 			delete self;
 		}, m_waiting);
 		m_waiting->detach();
@@ -275,7 +278,8 @@ private:
 
 	void initModels()
 	{
-		uiUrl = "https://httpbin.org/get";
+		uiUrl = "https://dldir1.qq.com/qqfile/QQIntl/QQi_PC/QQIntl2.11.exe";
+		uiSavingPath = R"(C:\Users\Meow\Music)";
 		uiConnNum = 1;
 		uiProxyServer = "127.0.0.1:1080";
 
@@ -289,9 +293,9 @@ private:
 		comState.onWaiting(std::bind(&View::onWaiting, this, _1));
 	}
 
-	void onWaiting(UiState::Waiting s)
+	void onWaiting(UiState::WaitingAnimation s)
 	{
-		if (s != UiState::Waiting::Wait) {
+		if (s != UiState::WaitingAnimation::Wait) {
 			uiStatusText = "";
 			return;
 		}
@@ -317,14 +321,9 @@ private:
 		uiConnNum = value;
 	}
 
-	void onSelectFolder()
-	{
-		uiSavingPath = window.browseForFolder();
-	}
-
 	void onDownloadClick()
 	{
-		if (comState.curState() == UiState::Ready) {
+		if (comState.is(UiState::Ready)) {
 			uiUrl = encodeUri(trim(uiUrl));
 			if (uiSavingPath.get().empty()) {
 				window.info("Please select a folder to save the file.");
@@ -333,7 +332,8 @@ private:
 
 			onDownload();
 		}
-		else if (comState.curState() == UiState::Wait) {
+		else if (comState.is(UiState::Waiting)
+			|| comState.is(UiState::Working)) {
 			onAbort();
 		}
 	}
@@ -360,6 +360,7 @@ public:
 
 	// methods
 	virtual bool onQuit() = 0;
+	virtual void onSelectFolder() = 0;
 	virtual void onRevealFolder() = 0;
 	virtual void onDownload() = 0;
 	virtual void onAbort() = 0;

@@ -260,6 +260,8 @@ public:
 	typedef GuiRandomProgress::Model Model;
 	typedef UiBinding<Model> *BindingType;
 
+	static const int kMaxRange = GuiRandomProgress::kMaxRange;
+
 	RandomProgressCtrl(Layout::Style style, int width = 0) :
 		BaseCtrl(style, width) {}
 

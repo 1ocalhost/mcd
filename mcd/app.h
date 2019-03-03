@@ -29,6 +29,15 @@ private:
 		return window.ask("Quit?", false);
 	}
 
+	void onSelectFolder() override
+	{
+		std::string newFolder = window.browseForFolder();
+		if (newFolder.size()) {
+			uiSavingPath = newFolder;
+			m_preFilePath.clear();
+		}
+	}
+
 	void onRevealFolder() override
 	{
 		if (m_preFilePath.size())
@@ -39,7 +48,7 @@ private:
 
 	void onDownload() override
 	{
-		comState.update(UiState::Working);
+		comState.update(UiState::Waiting);
 
 		m_asyncController.start(
 			Promise([&](AbortSignal* abort) {
@@ -61,6 +70,7 @@ private:
 	HttpConfig userConfig()
 	{
 		HttpConfig config;
+		config.setConnectTimeout(5);
 
 		if (uiChkProxyServer)
 			config.setHttpProxy(uiProxyServer);
@@ -125,7 +135,7 @@ private:
 		if (connNum > 1)
 			_call(checkUrlSupportRange(url, config, abort));
 
-		return doDownloadStuff(url, connNum, abort);
+		return doDownloadStuff(url, config, connNum, abort);
 	}
 
 	std::string renameFilePath(const std::string& path, int number)
@@ -174,62 +184,94 @@ private:
 		return {};
 	}
 
-	Result doDownloadStuff(ConStrRef url, int connNum, AbortSignal* abort)
+	Result doDownloadStuff(ConStrRef url, const HttpConfig& config,
+		int connNum, AbortSignal* abort)
 	{
 		std::string path;
 		_call(buildSavingPath(&path));
 
-		std::ofstream ofs;
-		ofs.open(path, std::ios::binary);
-		_must(ofs.good());
+		//std::ofstream ofs(path);
+		//_must(ofs.good());
+		//ofs.close();
 
-		m_preFilePath = path;
 
-		//std::string fileName = baseName(uiUrl);
-		//uiSavingPath.get() + fileName
+		HttpGetRequest http;
+		AbortSignal::Guard asg(abort, [&]() {
+			http.abort();
+		});
 
-		//std::ifstream infile(path);
-		//return infile.good();
+		_call(http.init(config));
+		_call(http.open(url));
+		comState.update(UiState::Working);
 
-		//HttpGetRequest http;
-		//AbortSignal::Guard asg(abort, [&]() {
-		//	http.abort();
-		//});
+		class DownloadFileWriter : public HttpResponseBase
+		{
+		public:
+			Result init(ConStrRef path, int64_t pos)
+			{
+				m_file.open(path, std::ios::binary);
+				m_file.seekp(pos);
+				_must_or_return(InternalError::ioError, m_file.good());
+				return {};
+			}
 
-		//_call(http.init());
-		//_call(http.open(url));
+			virtual Result write(const BinaryData& data) override
+			{
+				m_file.write((char*)data.buffer, data.size);
+				_must_or_return(InternalError::ioError, m_file.good());
+				return HttpResponseBase::write(data);
+			}
 
-		//class HttpResponseXXX : public HttpResponseBase
-		//{
-		//public:
-		//	virtual Result write(const BinaryData& data) override
-		//	{
-		//		long now = std::time(nullptr);
-		//		bool toExit = now - m_time < 1;
-		//		m_time = now;
+			void close()
+			{
+				m_file.close();
+			}
 
-		//		if (toExit)
-		//			return HttpResponseBase::write(data);
+		private:
+			std::ofstream m_file;
+		};
 
-		//		SizeType t = sizeDone();
-		//		std::stringstream ss;
-		//		ss << ">>> " << (t/1024.0) /*<< (char*)data.buffer*/ << "\n";
-		//		OutputDebugStringA(ss.str().c_str());
+		DownloadFileWriter writer;
+		_call(writer.init(path, 0));
 
-		//		return HttpResponseBase::write(data);
-		//	}
 
-		//	long m_time = 0; 
-		//};
+		___flag = true;
+		std::thread([&, this]() {
+			while (___flag) {
+				auto t = writer.sizeDone();
+				std::stringstream ss;
+				ss << ">>> " << (t / 1024.0);
+				uiStatusText = ss.str();
 
-		//HttpResponseXXX xxx;
-		//return http.HttpRequest::save(&xxx);
+				if (writer.sizeTotal() != (DownloadFileWriter::SizeType)-1) {
+					double xx = (double)t / writer.sizeTotal() * 1000;
+					uiProgress = { {0, (int)xx} };
+				}
 
-		uiProgress = { {0, 100}, {101, 200}, {500, 550}, {700, 720} };
-		return {};
+				sleep(0.8);
+			}
+		}).detach();
+
+		Result r = http.HttpRequest::save(&writer);
+
+		___flag = false;
+
+		if (r.ok()) {
+			uiProgress = {{0, RandomProgressCtrl::kMaxRange}};
+			m_preFilePath = path;
+		}
+		else {
+			uiProgress = {{0, 0}}; // state ?!!!
+			//writer.close();
+			//::remove(path.c_str());
+		}
+
+		return r;
 	}
 
 private:
+	bool ___flag = true;
+
 	std::string m_preFilePath;
 	AsyncController m_asyncController;
 };

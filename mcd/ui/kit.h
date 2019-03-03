@@ -26,7 +26,10 @@ inline std::string errorString(DWORD code, PCWSTR module = L"")
 	DWORD size = FormatMessage(flag, source,
 		code, NULL, (PWSTR)&message, 0, NULL);
 
-	std::string result(u16to8(message), (size_t)size);
+	if (size == 0)
+		return {};
+
+	std::string result = u16to8(message);
 	LocalFree(message);
 
 	trimRight(&result);
@@ -75,10 +78,9 @@ inline Rect curScreenRect()
 
 inline void browseToFile(ConStrRef path)
 {
-	ITEMIDLIST *pidl = ILCreateFromPath(u8to16(path));
+	LPITEMIDLIST pidl = ILCreateFromPath(u8to16(path));
 	if (pidl) {
 		SHOpenFolderAndSelectItems(pidl, 0, 0, 0);
-		SHBrowseForFolder(pidl);
 		ILFree(pidl);
 	}
 }

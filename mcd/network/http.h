@@ -8,8 +8,6 @@ using namespace http_api;
 class HttpConfig : public IMetaViewer
 {
 public:
-	static const ULONG kInfinite = (ULONG)-1;
-
 	typedef RequestHeaders Headers;
 
 	void setHttpProxy(const std::string& server)
@@ -51,12 +49,12 @@ public:
 		return m_requestHeaders;
 	}
 
-	void setConnectTimeout(ULONG milliseconds)
+	void setConnectTimeout(int seconds)
 	{
-		m_connectTimeout = milliseconds;
+		m_connectTimeout = seconds;
 	}
 
-	ULONG connectTimeout() const
+	int connectTimeout() const
 	{
 		return m_connectTimeout;
 	}
@@ -71,7 +69,7 @@ public:
 	}
 
 private:
-	ULONG m_connectTimeout = kInfinite;
+	int m_connectTimeout = 60;
 	std::string m_httpProxyServer;
 	Headers m_requestHeaders;
 };
@@ -220,6 +218,11 @@ public:
 		return m_sizeDone;
 	}
 
+	SizeType sizeTotal() const
+	{
+		return m_sizeTotal;
+	}
+
 private:
 	// WinHTTP donot support 64-bits
 	SizeType m_sizeTotal = (SizeType)-1;
@@ -255,7 +258,12 @@ public:
 	{
 		m_headers = config.headers();
 		HINTERNET session;
-		_call(createSession(&session, config.httpProxy()));
+		_call(createSession(
+			&session,
+			config.httpProxy(),
+			config.connectTimeout()
+		));
+
 		_must(session);
 		m_session = session;
 		return {};

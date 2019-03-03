@@ -42,10 +42,20 @@ inline HINTERNET createSessionWrapper
 		WINHTTP_NO_PROXY_BYPASS, flags);
 }
 
-inline Result createSession(HINTERNET *session, ConStrRef proxy)
+inline Result createSession(HINTERNET *session,
+	ConStrRef proxy, int timeoutSeconds)
 {
 	HINTERNET session_ = createSessionWrapper(proxy);
 	_must_or_return_winhttp_error(session_, proxy);
+
+	Bool result = WinHttpSetTimeouts(session_,
+		5 * 1000, // DNS
+		timeoutSeconds * 1000, // connect
+		30 * 1000, // send
+		30 * 1000 // receive
+	);
+	_must_or_return_winhttp_error(result);
+
 	*session = session_;
 	return {};
 }
