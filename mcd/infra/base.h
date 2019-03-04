@@ -47,35 +47,16 @@ public:
 	virtual ~InterfaceClass() {}
 };
 
-template<class T, size_t N>
+template <class T, size_t N>
 constexpr size_t _sizeof(T(&)[N]) { return N; }
 
 template <class T>
-inline bool inRange(T v, T begin, T end)
-{
-	return v >= begin && v < end;
-}
+using InitList = std::initializer_list<T>;
 
-template <class EleType = void, class... T>
-constexpr auto makeArray(T&&... ele)
+template <class T>
+bool inArray(const T& ele, InitList<T> arr)
 {
-	typedef typename std::common_type<T...>::type Element;
-
-	if constexpr (std::is_same<void, EleType>::value)
-		return std::array<Element, sizeof...(T)>{
-		static_cast<Element>(ele)...
-	};
-	else
-		return std::array<EleType, sizeof...(T)>{
-		static_cast<EleType>(ele)...
-	};
-}
-
-template <class EleType, class... T>
-bool inArray(EleType&& toFind, T&&... ele)
-{
-	auto arr = makeArray<EleType>(ele...);
-	return std::find(arr.begin(), arr.end(), toFind) != arr.end();
+	return std::find(arr.begin(), arr.end(), ele) != arr.end();
 }
 
 inline void sleep(double seconds)
@@ -165,8 +146,7 @@ inline std::vector<std::string> split(
 
 inline void escapeBlankChar(std::string* str)
 {
-	const auto toEscape = makeArray<const char*>(
-		"\r\\r", "\n\\n", "\t\\t");
+	auto toEscape = {"\r\\r", "\n\\n", "\t\\t"};
 
 	auto hasSpecialChar = [&]() -> bool {
 		for (char ch : *str) {
@@ -585,12 +565,23 @@ public:
 	Range(T begin, T end) : Base(begin, end) {}
 	Iterator begin() const { return Iterator(this->first); }
 	Iterator end() const { return Iterator(this->second); }
+
+	bool contain(T v) const
+	{
+		return v >= this->first && v < this->second;
+	}
 };
 
 template <class T>
-constexpr Range<T> range(T begin, T end)
+constexpr auto range(T begin, T end)
 {
-	return {begin, end};
+	return Range<T>(begin, end);
+}
+
+template <class T>
+inline bool inRange(const T& v, const T& begin, const T& end)
+{
+	return Range<T>(begin, end).contain(v);
 }
 
 class Bool

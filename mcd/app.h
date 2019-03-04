@@ -1,6 +1,5 @@
 #pragma once
 #include "network/http.h"
-#include "ui/kit.h"
 #include "view.h"
 
 BEGIN_NAMESPACE_MCD
@@ -21,7 +20,7 @@ public:
 
 typedef UiString _S;
 
-class App : public View
+class App : public ViewState
 {
 private:
 	bool onQuit() override
@@ -48,22 +47,39 @@ private:
 
 	void onDownload() override
 	{
-		comState.update(UiState::Waiting);
+		setState(State::Waiting);
 
 		m_asyncController.start(
 			Promise([&](AbortSignal* abort) {
 				return startDownload(abort);
 			})
-			.onFinish([&](Result r) {
-				comState.update(UiState::Ready);
-				showError(r);
-			})
+			.onFinish(std::bind(
+				&App::onDownloadFinish, this, _1))
 		);
+	}
+
+	void onDownloadFinish(Result r)
+	{
+		if (r.ok()) {
+			setState(State::Complete);
+			return;
+		}
+
+		remove(m_preFilePath.c_str());
+		m_preFilePath.clear();
+
+		if (r.is(InternalError::userAbort)) {
+			setState(State::Aborted);
+		}
+		else {
+			setState(State::Failed);
+			showError(r);
+		}
 	}
 
 	void onAbort() override
 	{
-		comState.update(UiState::Aborting);
+		setState(State::Aborting);
 		m_asyncController.abort();
 	}
 
@@ -92,7 +108,7 @@ private:
 
 	void showError(const Result& r)
 	{
-		if (r.ok() || r.is(InternalError::userAbort))
+		if (r.ok())
 			return;
 
 		std::string msg("Error: ");
@@ -141,7 +157,7 @@ private:
 	std::string renameFilePath(const std::string& path, int number)
 	{
 		std::stringstream ss;
-		ss << "(" << number << ")";
+		ss << " (" << number << ")";
 		std::string number_ = ss.str();
 		clear(&ss);
 
@@ -194,6 +210,7 @@ private:
 		//_must(ofs.good());
 		//ofs.close();
 
+		m_preFilePath = path;
 
 		HttpGetRequest http;
 		AbortSignal::Guard asg(abort, [&]() {
@@ -202,7 +219,7 @@ private:
 
 		_call(http.init(config));
 		_call(http.open(url));
-		comState.update(UiState::Working);
+		setState(State::Working);
 
 		class DownloadFileWriter : public HttpResponseBase
 		{
@@ -253,19 +270,7 @@ private:
 		}).detach();
 
 		Result r = http.HttpRequest::save(&writer);
-
 		___flag = false;
-
-		if (r.ok()) {
-			uiProgress = {{0, RandomProgressCtrl::kMaxRange}};
-			m_preFilePath = path;
-		}
-		else {
-			uiProgress = {{0, 0}}; // state ?!!!
-			//writer.close();
-			//::remove(path.c_str());
-		}
-
 		return r;
 	}
 

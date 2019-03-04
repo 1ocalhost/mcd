@@ -160,9 +160,20 @@ public:
 		m_value = newValue;
 	}
 
+	BaseCtrl* ctrl() const
+	{
+		return m_ctrl;
+	}
+
+	void setCtrl(BaseCtrl* c)
+	{
+		m_ctrl = c;
+	}
+
 private:
 	T m_value;
 	Notifier m_notifier;
+	BaseCtrl* m_ctrl = nullptr;
 };
 
 class SpacingLineCtrl : public BaseCtrl
@@ -221,6 +232,7 @@ public:
 	TextCtrl* bindModel(BindingType binding)
 	{
 		m_binding = binding;
+		m_binding->setCtrl(this);
 		m_binding->subscribe(
 			[this](ConStrRef from, ConStrRef to) {
 			if (from != to && guiText() != to)
@@ -280,6 +292,7 @@ public:
 	Self* bindModel(BindingType binding)
 	{
 		m_binding = binding;
+		m_binding->setCtrl(this);
 		m_binding->subscribe(
 			[this](const Model& from, const Model& to) {
 			UNUSED(from);
@@ -309,14 +322,23 @@ public:
 class ButtonCtrl : public BaseCtrl
 {
 public:
+	typedef UiBinding<std::string> *BindingType;
+
 	ButtonCtrl(
 		Layout::Style style = Layout::Style::Optimum,
 		int width = 0) :
 		BaseCtrl(style, width) {}
 
-	ButtonCtrl* setDefault(ConStrRef text)
+	ButtonCtrl* bindModel(BindingType binding)
 	{
-		m_text = text;
+		m_binding = binding;
+		m_binding->setCtrl(this);
+		m_binding->subscribe(
+			[this](ConStrRef from, ConStrRef to) {
+			if (from != to && guiText() != to)
+				setGuiText(to);
+		});
+
 		return this;
 	}
 
@@ -333,11 +355,6 @@ public:
 		return this;
 	}
 
-	ConStrRef defaultText() const
-	{
-		return m_text;
-	}
-
 	void notifyOnClick()
 	{
 		if (m_onClick)
@@ -345,15 +362,23 @@ public:
 	}
 
 private:
+	std::string btnText()
+	{
+		if (m_binding)
+			return *m_binding;
+
+		return {};
+	}
+
 	void calcOptimumSize() override
 	{
-		Size size_ = calcTextSize(m_text + "wrap");
+		Size size_ = calcTextSize(btnText() + "wrap");
 		setSize({size_.width(), size().height() + 2});
 	}
 
 	void create(Point pos) override
 	{
-		createWindow(pos, L"Button", m_text);
+		createWindow(pos, L"Button", btnText());
 	}
 
 	void onMessageCommand(WORD eventType) override
@@ -362,7 +387,8 @@ private:
 			m_onClick();
 	}
 
-	std::string m_text;
+	//std::string m_text;
+	BindingType m_binding = nullptr;
 	std::function<void()> m_onClick;
 };
 
@@ -378,13 +404,15 @@ public:
 
 	CheckBoxCtrl* setDefault(ConStrRef text)
 	{
-		ButtonCtrl::setDefault(text);
+		m_defaultText = text;
+		ButtonCtrl::bindModel(&m_defaultText);
 		return this;
 	}
 
 	CheckBoxCtrl* bindModel(BindingType binding)
 	{
 		m_binding = binding;
+		m_binding->setCtrl(this);
 		m_binding->subscribe(
 			[this](const int& from, const int& to) {
 			if (from != to)
@@ -418,7 +446,7 @@ public:
 private:
 	void create(Point pos) override
 	{
-		createWindow(pos, L"Button", defaultText(), BS_AUTOCHECKBOX);
+		createWindow(pos, L"Button", m_defaultText, BS_AUTOCHECKBOX);
 		if (m_binding)
 			setChecked(*m_binding);
 	}
@@ -438,6 +466,7 @@ private:
 
 	BindingType m_binding = nullptr;
 	std::function<void()> m_whenStateUpdated;
+	UiBinding<std::string> m_defaultText;
 };
 
 class EditCtrl : public BaseCtrl
@@ -456,6 +485,7 @@ public:
 	EditCtrl* bindModel(BindingType binding)
 	{
 		m_binding = binding;
+		m_binding->setCtrl(this);
 		m_binding->subscribe(
 			[this](ConStrRef from, ConStrRef to) {
 			if (from != to && guiText() != to)
@@ -578,6 +608,7 @@ public:
 		EditCtrl::bindModel(&m_proxy);
 
 		m_binding = binding;
+		m_binding->setCtrl(this);
 		m_binding->subscribe(
 			[this](const int& from, const int& to) {
 				UNUSED(from);

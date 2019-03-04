@@ -1,5 +1,5 @@
 #pragma once
-#include "../infra/guard.h"
+#include "control.h"
 #include <ShlObj_core.h> // ILCreateFromPath
 
 BEGIN_NAMESPACE_MCD
@@ -204,6 +204,75 @@ public:
 private:
 	Promise m_job;
 	AbortSignal m_signal;
+};
+
+class WaitingAnimation
+{
+public:
+	typedef UiBinding<std::string> Binding;
+	typedef std::function<void(Binding*)> ClearFn;
+
+	void init(Binding* text, ClearFn clear)
+	{
+		m_uiText = text;
+		m_clearFn = clear;
+	}
+
+	~WaitingAnimation()
+	{
+		stop();
+	}
+
+	void play()
+	{
+		if (!m_uiText || !m_clearFn) {
+			assert(0);
+			return;
+		}
+
+		m_worker = new std::thread();
+		*m_worker = std::thread([this](std::thread* self) {
+			onWaiting(true);
+
+			do {
+				onWaiting(false);
+				sleep(0.5);
+			} while (m_worker == self);
+
+			onWaiting(true);
+			delete self;
+		}, m_worker);
+		m_worker->detach();
+	}
+
+	void stop()
+	{
+		m_worker = nullptr;
+	}
+
+private:
+	void onWaiting(bool toClear)
+	{
+		if (toClear) {
+			m_clearFn(m_uiText);
+			return;
+		}
+
+		char ch = '.';
+		if (m_uiText->get().size())
+			ch = m_uiText->get().front();
+
+		if (ch == '-')
+			*m_uiText = "\\ ...";
+		else if (ch == '\\')
+			*m_uiText = "/ ...";
+		else
+			*m_uiText = "- ...";
+	}
+
+	ClearFn m_clearFn;
+	Binding* m_uiText = nullptr;
+	std::thread* m_worker = nullptr;
 };
 
 END_NAMESPACE_MCD

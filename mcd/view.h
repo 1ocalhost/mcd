@@ -3,163 +3,6 @@
 
 BEGIN_NAMESPACE_MCD
 
-class UiState
-{
-public:
-	enum State {
-		Ready,
-		Waiting,
-		Working,
-		Aborting
-	};
-
-	enum WaitingAnimation {
-		Start,
-		Wait,
-		End
-	};
-
-	typedef std::function<void(WaitingAnimation)> OnWaittingFn;
-
-	UiState(const Window* window) : m_window(*window)
-	{
-	}
-
-	~UiState()
-	{
-		m_waiting = nullptr;
-	}
-
-	bool is(State s) const
-	{
-		return m_curState == s;
-	}
-
-	void update(State s)
-	{
-		if (s == m_curState)
-			return;
-
-		if (s != State::Waiting)
-			m_waiting = nullptr;
-
-		if (s == State::Waiting) {
-			disableAllCtrl();
-			playWaiting();
-			ctrlByUid("download").setText("Abort");
-		}
-		else if (s == State::Aborting) {
-			ctrlByUid("download").setEnabled(false);
-		}
-		else if (s == State::Ready) {
-			restoreCtrlState();
-
-			ctrlByUid("download")
-				.setText("Download")
-				.setEnabled(true);
-
-			ctrlByUid("status").setText("");
-		}
-
-		m_curState = s;
-	}
-
-	void onWaiting(OnWaittingFn fn)
-	{
-		m_onWaiting = fn;
-	}
-
-private:
-	class CtrlProxy
-	{
-	public:
-		CtrlProxy(BaseCtrl* ctrl) : m_ctrl(ctrl) {}
-
-		CtrlProxy& setText(ConStrRef text)
-		{
-			if (m_ctrl)
-				m_ctrl->setGuiText(text);
-
-			return *this;
-		}
-
-		CtrlProxy& setEnabled(bool enabled = true)
-		{
-			if (m_ctrl)
-				m_ctrl->setEnabled(enabled);
-
-			return *this;
-		}
-
-	private:
-		BaseCtrl* m_ctrl;
-	};
-
-	void playWaiting()
-	{
-		if (!m_onWaiting)
-			return;
-
-		m_waiting = new std::thread();
-		*m_waiting = std::thread([&](std::thread* self) {
-			m_onWaiting(WaitingAnimation::Start);
-
-			do {
-				m_onWaiting(WaitingAnimation::Wait);
-				sleep(0.5);
-			} while (m_waiting == self);
-
-			m_onWaiting(WaitingAnimation::End);
-			delete self;
-		}, m_waiting);
-		m_waiting->detach();
-	}
-
-	CtrlProxy ctrlByUid(const char* id)
-	{
-		BaseCtrl* result = nullptr;
-		m_window.eachCtrl([&](BaseCtrl* ctrl) {
-			if (ctrl->uid() == id)
-				result = ctrl;
-		});
-
-		return result;
-	}
-
-	void disableAllCtrl()
-	{
-		m_disabled.clear();
-		m_window.eachCtrl([&](BaseCtrl* ctrl) {
-			if (!ctrlInWhiteList(ctrl)
-				&& ctrl->enabled()) {
-				m_disabled.push_back(ctrl);
-				ctrl->setEnabled(false);
-			}
-		});
-	}
-
-	bool ctrlInWhiteList(BaseCtrl* ctrl)
-	{
-		return inArray<NativeString>(
-			ctrl->uid().c_str(), "download", "status");
-	}
-
-	void restoreCtrlState()
-	{
-		for (auto i : m_disabled)
-			i->setEnabled(true);
-
-		m_disabled.clear();
-	}
-
-	State m_curState = Ready;
-	const Window& m_window;
-	std::vector<BaseCtrl*> m_disabled;
-
-	std::thread* m_waiting = nullptr;
-	OnWaittingFn m_onWaiting;
-};
-
 template <class T, class... P>
 T* create(P... args)
 {
@@ -171,10 +14,7 @@ class View
 public:
 	typedef RandomProgressCtrl::Model RPCM;
 
-	View() :
-		m_window(uiLayout(), 500, "MCD"),
-		comState(&m_window)
-	{}
+	View() : m_window(uiLayout(), 500, "MCD") {}
 
 	int run(int showState)
 	{
@@ -257,9 +97,8 @@ private:
 					->onChanged(this, &View::onConnectionsChanged),
 				create<SpacingCtrl>(Layout::Fixed, 20),
 				create<ButtonCtrl>()
-					->setDefault("Download")
-					->onClick(this, &View::onDownloadClick)
-					->setUid("download")
+					->bindModel(&uiDownload)
+					->onClick(this, &View::onDownloadBtn)
 			},
 			{
 				create<SpacingLineCtrl>((float)0.5)
@@ -271,7 +110,6 @@ private:
 			{
 				create<TextCtrl>(Layout::Fill)
 					->bindModel(&uiStatusText)
-					->setUid("status")
 			}
 		};
 	}
@@ -280,36 +118,20 @@ private:
 	{
 		uiUrl = "https://dldir1.qq.com/qqfile/QQIntl/QQi_PC/QQIntl2.11.exe";
 		uiSavingPath = R"(C:\Users\Meow\Music)";
-		uiConnNum = 1;
-		uiProxyServer = "127.0.0.1:1080";
 
 		uiChkProxyServer = false;
 		uiChkUserAgent = false;
 		uiChkCookie = false;
 
-		uiProgress = RPCM{};
+		uiProxyServer = "127.0.0.1:1080";
+		uiUserAgent = "";
+		uiCookie = "";
+
+		uiConnNum = 1;
+		uiDownload = "Download";
+
+		uiProgress = RPCM();
 		uiStatusText = "23% Got, 1.12 MiB/s.";
-
-		comState.onWaiting(std::bind(&View::onWaiting, this, _1));
-	}
-
-	void onWaiting(UiState::WaitingAnimation s)
-	{
-		if (s != UiState::WaitingAnimation::Wait) {
-			uiStatusText = "";
-			return;
-		}
-
-		char ch = '.';
-		if (uiStatusText.get().size())
-			ch = uiStatusText.get().front();
-
-		if (ch == '-')
-			uiStatusText = "\\ ...";
-		else if (ch == '\\')
-			uiStatusText = "/ ...";
-		else
-			uiStatusText = "- ...";
 	}
 
 	void onConnectionsChanged(bool upOrDown)
@@ -321,39 +143,23 @@ private:
 		uiConnNum = value;
 	}
 
-	void onDownloadClick()
-	{
-		if (comState.is(UiState::Ready)) {
-			uiUrl = encodeUri(trim(uiUrl));
-			if (uiSavingPath.get().empty()) {
-				window.info("Please select a folder to save the file.");
-				return;
-			}
-
-			onDownload();
-		}
-		else if (comState.is(UiState::Waiting)
-			|| comState.is(UiState::Working)) {
-			onAbort();
-		}
-	}
-
 public:
 	const Window& window = m_window;
-	UiState comState;
 
 	// models
 	UiBinding<std::string> uiUrl;
 	UiBinding<std::string> uiSavingPath;
-	UiBinding<int> uiConnNum;
+
+	UiBinding<bool> uiChkProxyServer;
+	UiBinding<bool> uiChkUserAgent;
+	UiBinding<bool> uiChkCookie;
 
 	UiBinding<std::string> uiProxyServer;
 	UiBinding<std::string> uiUserAgent;
 	UiBinding<std::string> uiCookie;
 
-	UiBinding<bool> uiChkProxyServer;
-	UiBinding<bool> uiChkUserAgent;
-	UiBinding<bool> uiChkCookie;
+	UiBinding<int> uiConnNum;
+	UiBinding<std::string> uiDownload;
 
 	UiBinding<RPCM> uiProgress;
 	UiBinding<std::string> uiStatusText;
@@ -362,11 +168,151 @@ public:
 	virtual bool onQuit() = 0;
 	virtual void onSelectFolder() = 0;
 	virtual void onRevealFolder() = 0;
-	virtual void onDownload() = 0;
+	virtual void onDownloadBtn() = 0;
 	virtual void onAbort() = 0;
 
 private:
 	Window m_window;
+};
+
+class ViewState : public View
+{
+public:
+	ViewState()
+	{
+		m_waitingAnimation.init(&uiStatusText,
+			[this](WaitingAnimation::Binding *b) {
+				*b = textFromStatus(m_curState);
+			}
+		);
+	}
+
+	enum State {
+		Ready,
+		Waiting,
+		Working,
+		Aborting,
+		Aborted,
+		Failed,
+		Complete
+	};
+
+	void setState(State s)
+	{
+		if (s == m_curState)
+			return;
+
+		if (!inArray(s, {State::Waiting, State::Aborting}))
+			m_waitingAnimation.stop();
+
+		switch (s)
+		{
+		case State::Waiting:
+			disableAllCtrl();
+			m_waitingAnimation.play();
+			uiDownload.ctrl()->setGuiText("Abort");
+			break;
+
+		case State::Aborting:
+			uiDownload.ctrl()->setEnabled(false);
+			break;
+
+		case State::Aborted:
+		case State::Failed:
+		case State::Complete:
+			resetUiToReady(s);
+			break;
+		}
+
+		m_curState = s;
+	}
+
+private:
+	void resetUiToReady(State s)
+	{
+		restoreCtrlState();
+		uiDownload.ctrl()->setGuiText("Download");
+		uiDownload.ctrl()->setEnabled(true);
+
+		uiStatusText = textFromStatus(s);
+		int range = (s == State::Complete)
+			? RandomProgressCtrl::kMaxRange : 0;
+		uiProgress = {{0, range}};
+	}
+
+	const char* textFromStatus(State s)
+	{
+		switch (s)
+		{
+		case State::Aborted:
+			return "Aborted.";
+
+		case State::Failed:
+			return "Failed.";
+
+		case State::Complete:
+			return "Complete!";
+		}
+
+		return "";
+	}
+
+	void disableAllCtrl()
+	{
+		m_disabled.clear();
+		window.eachCtrl([&](BaseCtrl* ctrl) {
+			if (!ctrlInWhiteList(ctrl)
+				&& ctrl->enabled()) {
+				m_disabled.push_back(ctrl);
+				ctrl->setEnabled(false);
+			}
+		});
+	}
+
+	bool ctrlInWhiteList(BaseCtrl* ctrl)
+	{
+		return inArray(ctrl, {
+			uiDownload.ctrl(), uiStatusText.ctrl()
+		});
+	}
+
+	void restoreCtrlState()
+	{
+		for (auto i : m_disabled)
+			i->setEnabled(true);
+
+		m_disabled.clear();
+	}
+
+	void onDownloadBtn() override
+	{
+		switch (m_curState)
+		{
+		case State::Ready:
+		case State::Aborted:
+		case State::Failed:
+		case State::Complete:
+			uiUrl = encodeUri(trim(uiUrl));
+			if (uiSavingPath.get().empty()) {
+				window.info("Please select a folder to save the file.");
+				return;
+			}
+
+			onDownload();
+			break;
+
+		case State::Waiting:
+		case State::Working:
+			onAbort();
+			break;
+		}
+	}
+
+	virtual void onDownload() = 0;
+
+	State m_curState = State::Ready;
+	std::vector<BaseCtrl*> m_disabled;
+	WaitingAnimation m_waitingAnimation;
 };
 
 END_NAMESPACE_MCD

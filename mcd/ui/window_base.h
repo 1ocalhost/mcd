@@ -113,6 +113,19 @@ public:
 			SWP_NOZORDER | SWP_NOMOVE);
 	}
 
+	static std::array<POINT, 4> windowVertexes(Point p, Size s)
+	{
+		int x = p.x();
+		int y = p.y();
+		int w = s.width();
+		int h = s.height();
+
+		return {
+			POINT{x, y}, POINT{x+w, y},
+			POINT{x, y+h}, POINT{x+w, y+h}
+		};
+	}
+
 	void setCenterIn(const Rect& rect)
 	{
 		auto onScreen = [](POINT p) {
@@ -123,24 +136,13 @@ public:
 		Size s = windowSize();
 		Point p = rect.center(s);
 
-		int x = p.x();
-		int y = p.y();
-		int w = s.width();
-		int h = s.height();
-		auto cases = makeArray(
-			POINT{x, y},
-			POINT{x+w, y},
-			POINT{x, y+h},
-			POINT{x+w, y+h}
-		);
-
 		int pass = 0;
-		for (auto i : cases) {
+		for (auto i : windowVertexes(p, s)) {
 			if (onScreen(i))
 				pass += 1;
 		}
 
-		if (pass < 3)
+		if (pass < 3) // title bar is visible
 			return;
 
 		SetWindowPos(hwnd(), NULL, p.x(), p.y(),
