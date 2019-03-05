@@ -60,6 +60,7 @@ class RequireError {
 
 public:
 	static Result httpSupportRange() { return make(1); }
+	static Result httpSupportContentLenth() { return make(2); }
 };
 
 

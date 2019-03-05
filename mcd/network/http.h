@@ -1,6 +1,13 @@
 #pragma once
 #include "http_api.h"
 
+#define _equal_or_return_http_error(http, code, ...) { \
+	int response = http.statusCode(); \
+	if (!_eval_error(response == code) \
+		.setContext(__VA_ARGS__)) \
+		return Result("http", code); \
+}
+
 BEGIN_NAMESPACE_MCD
 
 using namespace http_api;
@@ -92,24 +99,49 @@ public:
 		std::vector<std::string> values;
 	};
 
+	class ContentLength
+	{
+	public:
+		typedef int64_t ValueType;
+
+		operator ValueType() const { return m_value; }
+		ValueType get() const { return m_value; }
+		bool didSet() const { return m_didSet; }
+
+		void operator =(ValueType v)
+		{
+			assert(v >= 0);
+			m_didSet = true;
+			m_value = v;
+		}
+
+		void reset()
+		{
+			m_didSet = false;
+			m_value = 0;
+		}
+
+	private:
+		bool m_didSet = false;
+		ValueType m_value = 0;
+	};
+
 	typedef std::map<std::string, HeaderValues> Headers;
 
 	Result parse(const std::string& rawHeaders)
 	{
 		parseRawHeader(rawHeaders);
-		uint32_t length;
-		_call(parseContentLength(&length));
-		m_contentLength = length;
+		_call(parseContentLength());
 		return {};
 	}
 
 	void clear()
 	{
 		m_headers.clear();
-		m_contentLength = (uint32_t)-1;
+		m_contentLength.reset();
 	}
 
-	uint32_t contentLength() const
+	const ContentLength& contentLength() const
 	{
 		return m_contentLength;
 	}
@@ -171,40 +203,42 @@ private:
 		mapKey.values.push_back(parser.value());
 	}
 
-	Result parseContentLength(uint32_t *result)
+	Result parseContentLength()
 	{
 		auto& header = (*this)["content-length"];
 		if (!_should(header.values.size(), *this)) {
-			*result = (uint32_t)-1;
 			return {};
 		}
 
-		unsigned long lengthNumber = 0;
+		int64_t lengthNumber = 0;
 		const std::string& length = header.values[0];
 		bool r = toNumber(length, &lengthNumber);
 
 		_must_or_return(InternalError::invalidInput, r, length);
+		_must_or_return(InternalError::invalidInput,
+			lengthNumber >= 0);
 		_must_or_return(FeatureError::httpBodyOver2GB,
 			lengthNumber < GB64(2), length);
 
-		*result = (uint32_t)lengthNumber;
+		m_contentLength = lengthNumber;
 		return {};
 	}
 
 	Headers m_headers;
 	HeaderValues m_headerNotExists;
-	uint32_t m_contentLength = (uint32_t)-1;
+	ContentLength m_contentLength;
 };
 
 
 class HttpResponseBase
 {
 public:
-	typedef uint32_t SizeType;
+	typedef HttpHeaders::ContentLength ContentLength;
+	typedef ContentLength::ValueType SizeType;
 
-	void setResponsedSize(uint32_t responsedSize)
+	void setResponsedSize(ContentLength cl)
 	{
-		m_sizeTotal = responsedSize;
+		m_cl = cl;
 	}
 
 	virtual Result write(const BinaryData& data)
@@ -220,15 +254,18 @@ public:
 
 	SizeType sizeTotal() const
 	{
-		return m_sizeTotal;
+		return m_cl.get();
+	}
+
+	bool didSetSizeTotal() const
+	{
+		return m_cl.didSet();
 	}
 
 private:
-	// WinHTTP donot support 64-bits
-	SizeType m_sizeTotal = (SizeType)-1;
+	ContentLength m_cl;
 	SizeType m_sizeDone = 0;
 };
-
 
 class HttpResponseString : public HttpResponseBase
 {
@@ -250,6 +287,85 @@ private:
 	SizeType m_maxLenth;
 };
 
+class HttpDownloadFileWriter : public HttpResponseBase
+{
+public:
+	Result init(ConStrRef path, int64_t pos, bool reuse)
+	{
+		if (m_file.is_open()) {
+			if (!reuse) {
+				m_file.close();
+				m_file.open(path, std::ios::binary);
+			}
+		}
+		else {
+			m_file.open(path, std::ios::binary);
+		}
+
+		m_file.seekp(pos);
+		_must_or_return(InternalError::ioError, m_file.good());
+		return {};
+	}
+
+	virtual Result write(const BinaryData& data) override
+	{
+		_must(m_file.good());
+		m_file.write((char*)data.buffer, data.size);
+		_must_or_return(InternalError::ioError, m_file.good());
+		return HttpResponseBase::write(data);
+	}
+
+private:
+	std::ofstream m_file;
+};
+
+class ParallelFileWriter
+{
+public:
+	Result init(ConStrRef path)
+	{
+		m_file.open(path, std::ios::binary);
+		_must_or_return(InternalError::ioError, m_file.good());
+		return {};
+	}
+
+	Result write(const BinaryData& data, int64_t pos)
+	{
+		Guard::Mutex lock(&m_mutex);
+		m_file.seekp(pos);
+		m_file.write((char*)data.buffer, data.size);
+		_must(m_file.good());
+		_must_or_return(InternalError::ioError, m_file.good());
+		return {};
+	}
+
+private:
+	std::mutex m_mutex;
+	std::ofstream m_file;
+};
+
+class HttpProxyWriter : public HttpResponseBase
+{
+public:
+	HttpProxyWriter(ParallelFileWriter* writer) :
+		m_writer(writer) {}
+
+	void init(int64_t pos)
+	{
+		m_pos = pos;
+	}
+
+	virtual Result write(const BinaryData& data) override
+	{
+		_call(m_writer->write(data, m_pos));
+		m_pos += data.size;
+		return HttpResponseBase::write(data);
+	}
+
+private:
+	int64_t m_pos = 0;
+	ParallelFileWriter* m_writer = nullptr;
+};
 
 class HttpRequest : public IMetaViewer
 {
@@ -294,11 +410,11 @@ public:
 		return receiveResponse();
 	}
 
-	Result save(HttpResponseBase* response)
+	Result saveResponse(HttpResponseBase* response)
 	{
-		uint32_t sizeReceived = 0;
-		uint32_t sizeTotal = m_contentLength;
-		response->setResponsedSize(sizeTotal);
+		int64_t sizeReceived = 0;
+		int64_t sizeTotal = m_contentLength;
+		response->setResponsedSize(m_contentLength);
 
 		BinaryData data;
 		while (sizeReceived < sizeTotal) {
@@ -329,7 +445,7 @@ private:
 	{
 		m_statusCode = 0;
 		m_responseHeaders.clear();
-		m_contentLength = (uint32_t)-1;
+		m_contentLength.reset();
 
 		// ERROR_INTERNET_OPERATION_CANCELLED (12017)
 		//   The operation was canceled, usually because the handle on
@@ -369,7 +485,7 @@ private:
 	int m_statusCode;
 	HttpConfig::Headers m_headers;
 	HttpHeaders m_responseHeaders;
-	uint32_t m_contentLength = (uint32_t)-1;
+	HttpHeaders::ContentLength m_contentLength;
 	HINTERNET m_session = NULL;
 	HttpConnect m_connect;
 };
@@ -385,7 +501,7 @@ public:
 	Result save(std::string* str)
 	{
 		HttpResponseString response(str);
-		return HttpRequest::save(&response);
+		return saveResponse(&response);
 	}
 };
 

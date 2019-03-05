@@ -16,6 +16,7 @@
 #include <thread>
 #include <mutex>
 #include <fstream>
+#include <queue>
 
 #define KB(value) ((value) * 1024)
 #define MB(value) (KB(value) * 1024)
@@ -209,13 +210,13 @@ inline std::string toString(int n)
 	return ss.str();
 }
 
-inline bool toNumber(ConStrRef str, unsigned long* number)
+inline bool toNumber(ConStrRef str, int64_t* number)
 {
 	if (str.empty())
 		return false;
 
 	try {
-		*number = std::stoul(str);
+		*number = (int64_t)std::stoll(str);
 	}
 	catch (...) {
 		return false;
@@ -562,6 +563,7 @@ public:
 		T m_n;
 	};
 
+	Range() : Range(0, 0) {}
 	Range(T begin, T end) : Base(begin, end) {}
 	Iterator begin() const { return Iterator(this->first); }
 	Iterator end() const { return Iterator(this->second); }

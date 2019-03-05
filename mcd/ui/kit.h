@@ -275,4 +275,157 @@ private:
 	std::thread* m_worker = nullptr;
 };
 
+inline void _formatDataSizeImpl(int64_t num, double* v, int* m, int* p)
+{
+	constexpr int kilo = 1024;
+	double& value = *v;
+	int& magnitude = *m;
+	int& precision = *p;
+
+	auto setRound = [&](double v) {
+		value = (int)v;
+		precision = 0;
+	};
+
+	while (num >= (kilo * kilo)) {
+		num /= kilo;
+		++magnitude;
+	}
+
+	if (num >= kilo || !magnitude) {
+		value = (double)num / kilo;
+		double decimalPart = value - (int)value;
+
+		if (decimalPart < 0.1) // 20.01MB -> 20MB
+			setRound(value);
+		else if (decimalPart > 0.9) // 20.91MB -> 21MB
+			setRound(value + 1);
+	}
+	else {
+		value = (double)num;
+		--magnitude;
+	}
+
+	if (value > 1000) { // 1001MB -> 1GB
+		setRound(1);
+		++magnitude;
+	}
+}
+
+inline void _formatDataSizeStream(int64_t num, std::stringstream* ss)
+{
+	if (num < 1000) {
+		*ss << num << "bytes";
+		return;
+	}
+
+	double value = 0;
+	int magnitude = 0;
+	int precision = 2;
+	_formatDataSizeImpl(num, &value,
+		&magnitude, &precision);
+
+	char units[] = "KMGTPEZ";
+	const int kMaxMagnitude = ARRAYSIZE(units) - 1;
+	if (magnitude > kMaxMagnitude)
+		return;
+
+	ss->precision(precision);
+	*ss << std::fixed << value << units[magnitude] << "iB";
+}
+
+inline std::string formattedDataSize(int64_t num)
+{
+	std::stringstream ss;
+	_formatDataSizeStream(num, &ss);
+	return ss.str();
+}
+
+class UiString : public std::string
+{
+public:
+	typedef UiString Self;
+
+	UiString(ConStrRef str) : std::string(str) {}
+
+	Self& operator +(const UiBinding<std::string>& str)
+	{
+		append(str.get());
+		return *this;
+	}
+};
+
+typedef UiString _S;
+
+inline std::string safeFileNameFromUri(ConStrRef uri)
+{
+	std::string name = baseName(uri);
+
+	[](std::string* s) {
+		auto pos = s->find('?');
+		if (pos != std::string::npos)
+			s->resize(pos);
+	}(&name);
+
+	std::replace_if(name.begin(), name.end(), [](char c) {
+		return inArray(c,
+			{ '<', '>', ':', '"', '/', '\\', '|', '?', '*' });
+	}, '_');
+
+	return name;
+}
+
+template <class T>
+class Tachometer
+{
+public:
+	struct Data
+	{
+		T size = 0;
+		time_t time = 0;
+	};
+
+	static const size_t kNumTokeep = 3;
+
+	Tachometer()
+	{
+		m_preData.push(Data());
+	}
+
+	double touch(const Data& d)
+	{
+		const auto& pre = m_preData.front();
+
+		double interval = std::max(
+			0.1, (double)(d.time - pre.time));
+		double speed = (d.size - pre.size) / interval;
+
+		m_preData.push(d);
+		if (m_preData.size() > kNumTokeep)
+			m_preData.pop();
+
+		return speed;
+	}
+
+private:
+	std::queue<Data> m_preData;
+};
+
+class TimePassed
+{
+public:
+	TimePassed()
+	{
+		m_start = time(nullptr);
+	}
+
+	time_t get() const
+	{
+		return time(nullptr) - m_start;
+	}
+
+private:
+	time_t m_start;
+};
+
 END_NAMESPACE_MCD

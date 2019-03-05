@@ -12,7 +12,7 @@ T* create(P... args)
 class View
 {
 public:
-	typedef RandomProgressCtrl::Model RPCM;
+	typedef RandomProgressCtrl RPC;
 
 	View() : m_window(uiLayout(), 500, "MCD") {}
 
@@ -130,8 +130,8 @@ private:
 		uiConnNum = 1;
 		uiDownload = "Download";
 
-		uiProgress = RPCM();
-		uiStatusText = "23% Got, 1.12 MiB/s.";
+		uiProgress = RPC::Model();
+		uiStatusText = "23% Got, 1.12MiB/s.";
 	}
 
 	void onConnectionsChanged(bool upOrDown)
@@ -161,7 +161,7 @@ public:
 	UiBinding<int> uiConnNum;
 	UiBinding<std::string> uiDownload;
 
-	UiBinding<RPCM> uiProgress;
+	UiBinding<RPC::Model> uiProgress;
 	UiBinding<std::string> uiStatusText;
 
 	// methods
@@ -211,6 +211,7 @@ public:
 			disableAllCtrl();
 			m_waitingAnimation.play();
 			uiDownload.ctrl()->setGuiText("Abort");
+			uiProgress = {{0, 0}};
 			break;
 
 		case State::Aborting:
@@ -235,8 +236,7 @@ private:
 		uiDownload.ctrl()->setEnabled(true);
 
 		uiStatusText = textFromStatus(s);
-		int range = (s == State::Complete)
-			? RandomProgressCtrl::kMaxRange : 0;
+		int range = (s == State::Complete) ? RPC::kMaxRange : 0;
 		uiProgress = {{0, range}};
 	}
 
@@ -292,12 +292,6 @@ private:
 		case State::Aborted:
 		case State::Failed:
 		case State::Complete:
-			uiUrl = encodeUri(trim(uiUrl));
-			if (uiSavingPath.get().empty()) {
-				window.info("Please select a folder to save the file.");
-				return;
-			}
-
 			onDownload();
 			break;
 

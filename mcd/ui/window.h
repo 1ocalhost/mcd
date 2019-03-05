@@ -47,7 +47,7 @@ class Typesetter
 	};
 
 public:
-	typedef std::vector<std::unique_ptr<BaseCtrl>> ContentHost;
+	typedef Guard::PtrSet<BaseCtrl> ContentHost;
 
 	Typesetter(const Layout::Content& content) :
 		m_layoutContent(content)

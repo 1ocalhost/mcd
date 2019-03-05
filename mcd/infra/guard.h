@@ -59,6 +59,9 @@ public:
 	Mutex(std::mutex* m) : lock_guard(*m) {}
 };
 
+template <class T>
+using PtrSet = std::vector<std::unique_ptr<T>>;
+
 } // namespace Guard
 
 END_NAMESPACE_MCD

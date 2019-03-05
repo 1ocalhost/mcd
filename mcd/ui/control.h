@@ -629,9 +629,9 @@ public:
 		EditCtrl::onMessageCommand(eventType);
 		const int kMax = std::numeric_limits<int>::max();
 
-		unsigned long value = 0;
+		int64_t value = 0;
 		if (toNumber(m_proxy, &value)
-			&& value <= (unsigned long)kMax) {
+			&& value <= kMax) {
 			m_binding->setDirectly((int)value);
 			return;
 		}
