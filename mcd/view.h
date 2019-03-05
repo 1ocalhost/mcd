@@ -12,6 +12,18 @@ T* create(P... args)
 class View
 {
 public:
+	enum TaskGranularity {
+		OneTenth = 0,
+		OnePercent,
+		Thousandth,
+		Fixed_1KB,
+		Fixed_10KB,
+		Fixed_100KB,
+		Fixed_1MB,
+		Fixed_10MB,
+		Fixed_100MB
+	};
+
 	typedef RandomProgressCtrl RPC;
 
 	View() : m_window(uiLayout(), 500, "MCD") {}
@@ -91,6 +103,11 @@ private:
 				&uiCookie),
 			{
 				create<SpacingCtrl>(Layout::Fill),
+				create<TextCtrl>()->setDefault("Granularity:"),
+				create<ComboCtrl<TaskGranularity>>()
+					->bindModel(&uiGranularity)
+					->setItems(granularityMap()),
+				create<SpacingCtrl>(Layout::Fixed, 10),
 				create<TextCtrl>()->setDefault("Connections:"),
 				create<EditNumCtrl>()->bindModel(&uiConnNum),
 				create<UpDownCtrl>()
@@ -114,10 +131,25 @@ private:
 		};
 	}
 
+	ComboCtrl<TaskGranularity>::ItemMap granularityMap()
+	{
+		return {
+			{TaskGranularity::OneTenth, "One Tenth"},
+			{TaskGranularity::OnePercent, "One Percent"},
+			{TaskGranularity::Thousandth, "Thousandth"},
+			{TaskGranularity::Fixed_1KB, "1KiB"},
+			{TaskGranularity::Fixed_10KB, "10KiB"},
+			{TaskGranularity::Fixed_100KB, "100KiB"},
+			{TaskGranularity::Fixed_1MB, "1MiB"},
+			{TaskGranularity::Fixed_10MB, "10MiB"},
+			{TaskGranularity::Fixed_100MB, "100MiB"},
+		};
+	}
+
 	void initModels()
 	{
-		uiUrl = "https://dldir1.qq.com/qqfile/QQIntl/QQi_PC/QQIntl2.11.exe";
-		uiSavingPath = R"(C:\Users\Meow\Music)";
+		uiUrl = "https://github.com/dwyl/english-words/blob/master/words_alpha.txt?raw=true";
+		uiSavingPath = R"(D:\_TODO\tmp\test_download)";
 
 		uiChkProxyServer = false;
 		uiChkUserAgent = false;
@@ -127,11 +159,12 @@ private:
 		uiUserAgent = "";
 		uiCookie = "";
 
+		uiGranularity = TaskGranularity::OnePercent;
 		uiConnNum = 1;
 		uiDownload = "Download";
 
 		uiProgress = RPC::Model();
-		uiStatusText = "23% Got, 1.12MiB/s.";
+		uiStatusText = "";
 	}
 
 	void onConnectionsChanged(bool upOrDown)
@@ -158,6 +191,7 @@ public:
 	UiBinding<std::string> uiUserAgent;
 	UiBinding<std::string> uiCookie;
 
+	UiBinding<TaskGranularity> uiGranularity;
 	UiBinding<int> uiConnNum;
 	UiBinding<std::string> uiDownload;
 

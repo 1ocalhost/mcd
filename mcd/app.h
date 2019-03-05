@@ -469,7 +469,10 @@ private:
 	Result buildSavingPath(std::string* savingPath)
 	{
 		std::string path = uiSavingPath.get();
-		path += "\\";
+		_must(path.size());
+		if (path.back() != '\\')
+			path += "\\";
+
 		path += safeFileNameFromUri(uiUrl);
 
 		if (!fileExists(path)) {

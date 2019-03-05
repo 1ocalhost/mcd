@@ -261,7 +261,7 @@ private:
 			WS_EX_CLIENTEDGE,
 			L"#32770",
 			u8to16(m_windowTitle),
-			WS_OVERLAPPEDWINDOW,
+			WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
 			0, 0,
 			size.width(), size.height(),
 			NULL, NULL, GetModuleHandle(NULL), NULL);

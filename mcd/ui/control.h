@@ -532,6 +532,100 @@ private:
 	CheckBoxCtrl* m_bindEnabled = nullptr;
 };
 
+template <class ModelEnum>
+class ComboCtrl : public BaseCtrl
+{
+public:
+	typedef std::map<ModelEnum, std::string> ItemMap;
+	typedef UiBinding<ModelEnum> *BindingType;
+	typedef const ModelEnum &ModelConRef;
+
+	ComboCtrl(
+		Layout::Style style = Layout::Style::Optimum,
+		int width = 0) :
+		BaseCtrl(style, width)
+	{
+		setMarginRight(5);
+	}
+
+	ComboCtrl* bindModel(BindingType binding)
+	{
+		m_binding = binding;
+		m_binding->setCtrl(this);
+		m_binding->subscribe(
+			[this](ModelConRef from, ModelConRef to) {
+				UNUSED(from);
+				if (m_modelToIndex.count(to) < 1)
+					return;
+
+				sendMessage(CB_SETCURSEL, m_modelToIndex.at(to));
+		});
+
+		return this;
+	}
+
+	ComboCtrl* setItems(const ItemMap& items)
+	{
+		m_ItemMap = items;
+
+		for (const auto& i : items) {
+			if (i.second.size() > m_longestStr.size())
+				m_longestStr = i.second;
+		}
+
+		return this;
+	}
+
+private:
+	void calcOptimumSize() override
+	{
+		std::string text = m_longestStr + "wrap";
+		Size size_ = calcTextSize(text);
+		setWidth(size_.width());
+	}
+
+	void create(Point pos) override
+	{
+		createWindow(pos, L"ComboBox", "",
+			CBS_DROPDOWNLIST, WS_EX_NOPARENTNOTIFY);
+
+		int index = 0;
+		for (const auto& i : m_ItemMap) {
+			sendMessage(CB_ADDSTRING, NULL,
+				(LPARAM)(PCWSTR)u8to16(i.second));
+
+			m_modelToIndex.emplace(i.first, index);
+			m_indexToModel.emplace(index, i.first);
+			++index;
+		}
+
+		*m_binding = m_binding->get();
+	}
+
+	void onMessageCommand(WORD eventType) override
+	{
+		if (eventType == CBN_SELENDOK) {
+			int r = (int)sendMessage(CB_GETCURSEL);
+
+			if (r == CB_ERR)
+				return;
+
+			if (m_indexToModel.count(r) < 1) {
+				assert(0);
+				return;
+			}
+
+			m_binding->setDirectly(m_indexToModel.at(r));
+		}
+	}
+
+	ItemMap m_ItemMap;
+	std::string m_longestStr;
+	BindingType m_binding = nullptr;
+	std::map<ModelEnum, int> m_modelToIndex;
+	std::map<int, ModelEnum> m_indexToModel;
+};
+
 class HyperlinkCtrl : public BaseCtrl
 {
 public:
