@@ -146,12 +146,24 @@ public:
 	{
 		double speed = curSpeed();
 		double progress = sizeDone() / (double)m_totalSize;
+		std::string speedData = formattedDataSize((int64_t)speed, true);
+
+		size_t speedDataLen = speedData.size();
+		if (speedDataLen > m_speedDataMaxLen)
+			m_speedDataMaxLen = speedDataLen;
 
 		std::stringstream ss;
 		ss.precision(2);
-		ss << std::fixed << (progress * 100) << "% Got, "
-			<< formattedDataSize((int64_t)speed) << "/s.";
+		ss << std::fixed << (progress * 100) << "% Got, ";
 
+		size_t filledWidth = m_speedDataMaxLen - speedDataLen;
+		if (filledWidth > 100) {
+			assert(0);
+			return {};
+		}
+
+		ss << std::string(filledWidth, ' ');
+		ss << speedData << "/s.";
 		return ss.str();
 	}
 
@@ -243,6 +255,7 @@ private:
 	Guard::PtrSet<AppDownloadWorker> m_workers;
 	ParallelFileWriter m_writer;
 	HeartbeatFn m_heartbeat;
+	size_t m_speedDataMaxLen = 0;
 };
 
 class App : public ViewState

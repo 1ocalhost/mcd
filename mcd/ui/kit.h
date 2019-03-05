@@ -282,11 +282,6 @@ inline void _formatDataSizeImpl(int64_t num, double* v, int* m, int* p)
 	int& magnitude = *m;
 	int& precision = *p;
 
-	auto setRound = [&](double v) {
-		value = (int)v;
-		precision = 0;
-	};
-
 	while (num >= (kilo * kilo)) {
 		num /= kilo;
 		++magnitude;
@@ -294,12 +289,6 @@ inline void _formatDataSizeImpl(int64_t num, double* v, int* m, int* p)
 
 	if (num >= kilo || !magnitude) {
 		value = (double)num / kilo;
-		double decimalPart = value - (int)value;
-
-		if (decimalPart < 0.1) // 20.01MB -> 20MB
-			setRound(value);
-		else if (decimalPart > 0.9) // 20.91MB -> 21MB
-			setRound(value + 1);
 	}
 	else {
 		value = (double)num;
@@ -307,12 +296,14 @@ inline void _formatDataSizeImpl(int64_t num, double* v, int* m, int* p)
 	}
 
 	if (value > 1000) { // 1001MB -> 1GB
-		setRound(1);
+		value = 1.0;
+		precision = 0;
 		++magnitude;
 	}
 }
 
-inline void _formatDataSizeStream(int64_t num, std::stringstream* ss)
+inline void _formatDataSizeStream(int64_t num,
+	std::stringstream* ss, bool toRound)
 {
 	if (num < 1000) {
 		*ss << num << "bytes";
@@ -330,14 +321,21 @@ inline void _formatDataSizeStream(int64_t num, std::stringstream* ss)
 	if (magnitude > kMaxMagnitude)
 		return;
 
-	ss->precision(precision);
-	*ss << std::fixed << value << units[magnitude] << "iB";
+	if (toRound) {
+		*ss << (int)round(value);
+	}
+	else {
+		ss->precision(precision);
+		*ss << std::fixed << value;
+	}
+
+	*ss << units[magnitude] << "iB";
 }
 
-inline std::string formattedDataSize(int64_t num)
+inline std::string formattedDataSize(int64_t num, bool toRound)
 {
 	std::stringstream ss;
-	_formatDataSizeStream(num, &ss);
+	_formatDataSizeStream(num, &ss, toRound);
 	return ss.str();
 }
 
