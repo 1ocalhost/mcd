@@ -60,7 +60,6 @@ class RequireError {
 
 public:
 	static Result httpSupportRange() { return make(1); }
-	static Result httpSupportContentLenth() { return make(2); }
 };
 
 
@@ -340,7 +339,7 @@ private:
 #endif
 
 #define _assert_helper(level, cond) \
-	AssertHelper(level, SRC_CONTEXT, cond, SRC_STATEMENT(cond))
+	AssertHelper(level, SRC_CONTEXT, !!(cond), SRC_STATEMENT(cond))
 #define _eval_warn(cond) _assert_helper(0, cond)
 #define _eval_error(cond) _assert_helper(1, cond)
 

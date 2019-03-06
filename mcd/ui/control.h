@@ -387,7 +387,6 @@ private:
 			m_onClick();
 	}
 
-	//std::string m_text;
 	BindingType m_binding = nullptr;
 	std::function<void()> m_onClick;
 };
@@ -629,6 +628,8 @@ private:
 class HyperlinkCtrl : public BaseCtrl
 {
 public:
+	typedef UiBinding<std::string> *BindingType;
+
 	HyperlinkCtrl(
 		Layout::Style style = Layout::Style::Optimum,
 		int width = 0) :
@@ -639,7 +640,20 @@ public:
 
 	HyperlinkCtrl* setDefault(ConStrRef text)
 	{
-		m_text = text;
+		m_default = text;
+		return bindModel(&m_default);
+	}
+
+	HyperlinkCtrl* bindModel(BindingType binding)
+	{
+		m_binding = binding;
+		m_binding->setCtrl(this);
+		m_binding->subscribe(
+			[this](ConStrRef from, ConStrRef to) {
+			if (from != to)
+				setGuiText(to);
+		});
+
 		return this;
 	}
 
@@ -656,15 +670,25 @@ public:
 		return this;
 	}
 
+
+private:
+	std::string btnText()
+	{
+		if (m_binding)
+			return *m_binding;
+
+		return {};
+	}
+
 	void calcOptimumSize() override
 	{
-		setSize(calcTextSize(m_text));
+		setSize(calcTextSize(btnText()));
 	}
 
 	void create(Point pos) override
 	{
 		std::stringstream ss;
-		ss << "<a>" << m_text << "</a>";
+		ss << "<a>" << btnText() << "</a>";
 		createWindow(pos, L"SysLink", ss.str());
 	}
 
@@ -677,8 +701,8 @@ public:
 		}
 	}
 
-private:
-	std::string m_text;
+	UiBinding<std::string> m_default;
+	BindingType m_binding = nullptr;
 	std::function<void()> m_onClick;
 };
 

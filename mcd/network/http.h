@@ -5,7 +5,7 @@
 	int response = http.statusCode(); \
 	if (!_eval_error(response == code) \
 		.setContext(__VA_ARGS__)) \
-		return Result("http", code); \
+		return Result("http", response); \
 }
 
 BEGIN_NAMESPACE_MCD
@@ -262,6 +262,12 @@ public:
 		return m_cl.didSet();
 	}
 
+	void clear()
+	{
+		m_cl.reset();
+		m_sizeDone = 0;
+	}
+
 private:
 	ContentLength m_cl;
 	SizeType m_sizeDone = 0;
@@ -394,12 +400,14 @@ public:
 	void abort()
 	{
 		abortPrevious();
+		m_userAborted = true;
 	}
 
 	Result open(ConStrRef url, ConStrRef verb)
 	{
 		_must(m_session, url);
 		abortPrevious();
+		m_userAborted = false;
 
 		HttpConnect conn;
 		_call(connect(&conn, m_session,
@@ -426,6 +434,9 @@ public:
 			_call(response->write(data));
 			sizeReceived += data.size;
 		}
+
+		if (m_userAborted)
+			return InternalError::userAbort();
 
 		return {};
 	}
@@ -476,12 +487,14 @@ private:
 	MetaViewerFunc
 	{
 		return VarDumper()
+			<< m_userAborted
 			<< m_headers
 			<< m_statusCode
 			<< m_responseHeaders
 		;
 	}
 
+	bool m_userAborted = false;
 	int m_statusCode;
 	HttpConfig::Headers m_headers;
 	HttpHeaders m_responseHeaders;

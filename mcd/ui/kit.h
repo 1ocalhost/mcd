@@ -426,4 +426,18 @@ private:
 	time_t m_start;
 };
 
+inline Result parseHttpRange(ConStrRef str,
+	std::array<int64_t, 3>* result)
+{
+	std::cmatch matched;
+	std::regex rule(R"((\d+)-(\d+)/(\d+))");
+	bool valid = std::regex_search(str.c_str(), matched, rule);
+	_must_or_return(InternalError::invalidInput, valid, str);
+
+	for (int i : range(3))
+		toNumber(matched[i + 1].str(), &(*result)[i]);
+
+	return {};
+}
+
 END_NAMESPACE_MCD

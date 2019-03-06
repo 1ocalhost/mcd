@@ -126,7 +126,10 @@ private:
 			},
 			{
 				create<TextCtrl>(Layout::Fill)
-					->bindModel(&uiStatusText)
+					->bindModel(&uiStatusText),
+				create<HyperlinkCtrl>()
+					->bindModel(&uiRetryNow)
+					->onClick(this, &View::onRetryNow)
 			}
 		};
 	}
@@ -165,6 +168,7 @@ private:
 
 		uiProgress = RPC::Model();
 		uiStatusText = "";
+		uiRetryNow = "";
 	}
 
 	void onConnectionsChanged(bool upOrDown)
@@ -197,6 +201,7 @@ public:
 
 	UiBinding<RPC::Model> uiProgress;
 	UiBinding<std::string> uiStatusText;
+	UiBinding<std::string> uiRetryNow;
 
 	// methods
 	virtual bool onQuit() = 0;
@@ -204,6 +209,7 @@ public:
 	virtual void onRevealFolder() = 0;
 	virtual void onDownloadBtn() = 0;
 	virtual void onAbort() = 0;
+	virtual void onRetryNow() = 0;
 
 private:
 	Window m_window;
@@ -238,6 +244,9 @@ public:
 
 		if (!inArray(s, {State::Waiting, State::Aborting}))
 			m_waitingAnimation.stop();
+
+		if (s != State::Working)
+			uiRetryNow = "";
 
 		switch (s)
 		{

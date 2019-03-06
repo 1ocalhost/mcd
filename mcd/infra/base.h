@@ -15,6 +15,7 @@
 #include <array>
 #include <thread>
 #include <mutex>
+#include <atomic>
 #include <fstream>
 #include <queue>
 
@@ -578,6 +579,12 @@ template <class T>
 constexpr auto range(T begin, T end)
 {
 	return Range<T>(begin, end);
+}
+
+template <class T>
+constexpr auto range(T end)
+{
+	return Range<T>((T)0, end);
 }
 
 template <class T>

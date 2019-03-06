@@ -9,14 +9,68 @@ struct AppTaskParam
 	std::string url;
 	std::string filePath;
 	HttpConfig config;
+	int64_t totalSize = 0;
+	int64_t granularity = 0;
+	int connNum = 0;
 };
 
-class AppDownloadWorker
+class AppTaskList
 {
 public:
-	AppDownloadWorker(const AppTaskParam& param,
-		Range<int64_t> range, ParallelFileWriter* writer) :
-		m_taskParam(param), m_range(range), m_writer(writer) {}
+	typedef Range<int64_t> Task;
+
+	void spawn(const AppTaskParam& param)
+	{
+		int64_t amount = param.totalSize;
+		int64_t step = param.granularity;
+
+		for (int64_t i = 0; i < amount; i += step) {
+			int64_t begin = i;
+			int64_t end = i + step;
+			if (end > amount)
+				end = amount;
+
+			m_tasks.push(Range<int64_t>(begin, end));
+		}
+	}
+
+	bool get(Task* task)
+	{
+		Guard::Mutex lock(&m_mutex);
+		if (m_tasks.empty())
+			return false;
+
+		*task = m_tasks.front();
+		m_tasks.pop();
+		return true;
+	}
+
+private:
+	std::queue<Task> m_tasks;
+	std::mutex m_mutex;
+};
+
+class AppDownloadWorker : public std::thread
+{
+public:
+	typedef std::function<bool(Result)> AskRetry;
+	typedef std::vector<Range<int64_t>> Ranges;
+
+	AppDownloadWorker(
+		const AppTaskParam& param,
+		AppTaskList* list,
+		ParallelFileWriter* writer,
+		AskRetry askRetry) :
+		m_taskParam(param),
+		m_taskList(list),
+		m_writer(writer),
+		m_askRetry(askRetry)
+	{
+		assert(m_askRetry);
+		thread::operator= (thread(
+			std::bind(&AppDownloadWorker::run, this)
+		));
+	}
 
 	void abort()
 	{
@@ -25,15 +79,103 @@ public:
 
 	int64_t sizeDone() const
 	{
-		return m_writer.sizeDone();
+		return m_preSizeDone + m_writer.sizeDone();
 	}
 
-	const Range<int64_t>& range() const
+	Range<int64_t> curRange() const
 	{
-		return m_range;
+		int64_t left = m_range.first;
+		int64_t right = left + m_writer.sizeDone();
+		return Range<int64_t>(left, right);
 	}
 
-	Result run()
+	const Ranges& preRanges() const
+	{
+		return m_preRanges;
+	}
+
+	int waitingTimes() const
+	{
+		return m_waitingTimes;
+	}
+
+	void resetWaitingTimes()
+	{
+		m_waitingTimes = 0;
+	}
+
+private:
+	void run()
+	{
+		for (;;) {
+			AppTaskList::Task task;
+			if (!m_taskList->get(&task))
+				return;
+
+			m_range = task;
+			Result r = work();
+
+			if (r.failed()) {
+				if (!doRetry(r))
+					return;
+			}
+		}
+	}
+
+	bool wait(int times)
+	{
+		int seconds = (int)pow(2, times);
+		m_waitingTimes = seconds * 2;
+
+		for (; m_waitingTimes > 0; --m_waitingTimes) {
+			if (m_signal.didAborted())
+				return false;
+
+			sleep(0.5);
+		}
+
+		return true;
+	}
+
+	bool doRetry(Result r)
+	{
+		int timesTried = 0;
+		for (;;) {
+			if (timesTried < 8)
+				++timesTried;
+
+			if (!wait(timesTried))
+				return false;
+
+			if (m_askRetry(r)) {
+				r = work();
+				if (r.ok())
+					return true;
+			}
+			else {
+				return false;
+			}
+		}
+	}
+
+	Result work()
+	{
+		auto taskComplete = [this]() {
+			int64_t taskSize = m_range.second - m_range.first;
+			return m_writer.sizeDone() == taskSize;
+		};
+
+		Result r = workImpl();
+		if (r.ok() || taskComplete()) {
+			m_preRanges.push_back(m_range);
+			m_preSizeDone += m_writer.sizeDone();
+			m_writer.clear();
+		}
+
+		return r;
+	}
+
+	Result workImpl()
 	{
 		rebuildRange();
 		HttpGetRequest http;
@@ -53,7 +195,6 @@ public:
 		return http.saveResponse(&m_writer);
 	}
 
-private:
 	void rebuildRange()
 	{
 		m_curRange = m_range;
@@ -78,32 +219,33 @@ private:
 		std::string cr = http.headers().firstValue("Content-Range");
 		_must_or_return(invalidInput, cr.size());
 
-		std::cmatch result;
-		std::regex rule(R"((\d+)-(\d+))");
-		bool valid = std::regex_search(cr.c_str(), result, rule);
-		_must_or_return(invalidInput, valid, cr);
-
-		int64_t begin = 0;
-		int64_t end = 0;
-		toNumber(result[1].str(), &begin);
-		toNumber(result[2].str(), &end);
-
-		_must_or_return(invalidInput, m_curRange.first == begin);
-		_must_or_return(invalidInput, m_curRange.second == end);
+		std::array<int64_t, 3> range;
+		_call(parseHttpRange(cr, &range));
+		_must_or_return(invalidInput, m_curRange.first == range[0]);
+		_must_or_return(invalidInput, m_curRange.second == range[1]);
 
 		return {};
 	}
 
 	Range<int64_t> m_range; // [a, b)
 	Range<int64_t> m_curRange; // [a, b]
+
+	AppTaskList* m_taskList;
 	AppTaskParam m_taskParam;
-	AbortSignal m_signal;
 	HttpProxyWriter m_writer;
+
+	AbortSignal m_signal;
+	AskRetry m_askRetry;
+	std::atomic_int m_waitingTimes = 0;
+
+	std::atomic_int64_t m_preSizeDone = 0;
+	Ranges m_preRanges;
 };
 
 class AppDownloadContractor
 {
 public:
+	typedef AppDownloadContractor Self;
 	typedef std::function<void()> HeartbeatFn;
 
 	void onHeartbeat(HeartbeatFn fn)
@@ -111,41 +253,37 @@ public:
 		m_heartbeat = fn;
 	}
 
-	Result start(const AppTaskParam& param,
-		int64_t totalSize, int connNum)
+	Result start(const AppTaskParam& param)
 	{
-		_must((bool)m_heartbeat);
-		_call(m_writer.init(param.filePath));
-
-		m_totalSize = totalSize;
-		std::vector<Range<int64_t>> tasks;
-		assignTask(totalSize, connNum, &tasks);
-
-		std::vector<std::thread> threads;
-		createTaskThreads(param, tasks, &threads);
+		_call(init(param));
 
 		bool alive = true;
 		std::thread ui([&, this]() {
 			updateUi(&alive);
 		});
 
-		join(&threads);
+		for (auto& i : m_workers)
+			i->join();
+
 		alive = false;
 		ui.join();
-		return {};
+
+		if (m_userAborted)
+			return InternalError::userAbort();
+
+		return m_result;
 	}
 
 	void abort()
 	{
-		for (auto& i : m_workers) {
-			i->abort();
-		}
+		m_userAborted = true;
+		abortAllWorkers();
 	}
 
 	std::string statusText()
 	{
 		double speed = curSpeed();
-		double progress = sizeDone() / (double)m_totalSize;
+		double progress = sizeDone() / totalSize();
 		std::string speedData = formattedDataSize((int64_t)speed, true);
 
 		size_t speedDataLen = speedData.size();
@@ -170,49 +308,90 @@ public:
 	void getRanges(std::vector<Range<int>> *range, int scaleTo)
 	{
 		range->clear();
-		double rate = scaleTo / (double)m_totalSize;
+		double rate = scaleTo / totalSize();
 
-		for (auto& i : m_workers) {
-			int64_t left = i->range().first;
-			int64_t right = left + i->sizeDone();
-			int iLeft = (int)(left * rate);
-			int iRight = (int)(right * rate);
-			range->emplace_back(iLeft, iRight);
+		auto addRange = [=](Range<int64_t> r) {
+			int left = (int)(r.first * rate);
+			int right = (int)(r.second * rate);
+			range->emplace_back(left, right);
+		};
+
+		for (auto& w : m_workers) {
+			for (auto& pr : w->preRanges())
+				addRange(pr);
+
+			addRange(w->curRange());
 		}
+	}
+
+	bool hasWorkerWait() const
+	{
+		for (auto& i : m_workers)
+			if (i->waitingTimes() > 0)
+				return true;
+
+		return false;
+	}
+
+	void resetWorkerWait()
+	{
+		for (auto& i : m_workers)
+			i->resetWaitingTimes();
 	}
 
 private:
-	void join(std::vector<std::thread>* threads)
+	Result init(const AppTaskParam& param)
 	{
-		for (auto& i : *threads)
-			i.join();
+		_must(m_heartbeat);
+
+		m_taskParam = param;
+		m_taskList.spawn(param);
+		_call(m_writer.init(param.filePath));
+
+		for (auto i : range(m_taskParam.connNum)) {
+			UNUSED(i);
+			m_workers.emplace_back(
+				new AppDownloadWorker(
+					param, &m_taskList, &m_writer,
+					std::bind(&Self::askRetry, this, _1)
+				)
+			);
+		}
+
+		return {};
 	}
 
-	void createTaskThreads(const AppTaskParam& param,
-		const std::vector<Range<int64_t>>& tasks,
-		std::vector<std::thread>* threads)
+	void abortAllWorkers()
 	{
-		for (auto i : tasks) {
-			auto worker = new AppDownloadWorker(param, i, &m_writer);
-			m_workers.emplace_back(worker);
-			threads->emplace_back([worker]() {
-				worker->run();
-			});
-		}
+		for (auto& i : m_workers)
+			i->abort();
 	}
 
-	void assignTask(int64_t amount, int partNum,
-		std::vector<Range<int64_t>> *r)
+	bool askRetry(Result r)
 	{
-		int64_t step = (amount / partNum) + 1;
-		for (int64_t i = 0; i < amount; i += step) {
-			int64_t begin = i;
-			int64_t end = i + step;
-			if (end > amount)
-				end = amount;
+		Guard::Mutex lock(&m_mutex);
 
-			r->push_back(Range<int64_t>(begin, end));
+		if (m_userAborted)
+			return false;
+
+		if (r.space() == http_api::resultSpace()) {
+			if (inArray(r.code(), {
+				ERROR_WINHTTP_TIMEOUT,
+				ERROR_WINHTTP_CANNOT_CONNECT
+			}))
+				return true;
 		}
+
+		if (m_result.ok())
+			m_result = r;
+
+		abortAllWorkers();
+		return false;
+	}
+
+	double totalSize()
+	{
+		return (double)m_taskParam.totalSize;
 	}
 
 	void updateUi(const bool* alive)
@@ -235,9 +414,8 @@ private:
 	int64_t sizeDone()
 	{
 		int64_t done = 0;
-		for (auto& i : m_workers) {
+		for (auto& i : m_workers)
 			done += i->sizeDone();
-		}
 
 		return done;
 	}
@@ -249,13 +427,20 @@ private:
 		return m_tachometer.touch({done, now});
 	}
 
-	int m_speedTimes = 0;
-	int64_t m_totalSize = 0;
-	Tachometer<int64_t> m_tachometer;
+	Result m_result;
+	bool m_userAborted = false;
+	std::mutex m_mutex;
+
+	AppTaskParam m_taskParam;
+	AppTaskList m_taskList;
 	Guard::PtrSet<AppDownloadWorker> m_workers;
+
+	int m_speedTimes = 0;
+	size_t m_speedDataMaxLen = 0;
+	Tachometer<int64_t> m_tachometer;
+
 	ParallelFileWriter m_writer;
 	HeartbeatFn m_heartbeat;
-	size_t m_speedDataMaxLen = 0;
 };
 
 class App : public ViewState
@@ -335,6 +520,12 @@ private:
 		m_asyncController.abort();
 	}
 
+	void onRetryNow() override
+	{
+		uiRetryNow = "";
+		m_toResetWorkerWait = true;
+	}
+
 	HttpConfig userConfig()
 	{
 		HttpConfig config;
@@ -368,7 +559,8 @@ private:
 		window.error(msg);
 	}
 
-	static Result checkUrlSupportRange(ConStrRef url,
+	static Result checkUrlSupportRange(
+		int64_t* totalSize, ConStrRef url,
 		const HttpConfig& config, AbortSignal* abort)
 	{
 		HttpConfig config_(config);
@@ -381,33 +573,18 @@ private:
 
 		_call(http.init(config_));
 		_call(http.open(url));
-		_equal_or_return_http_error(http, 206);
 
-		bool support = http.headers().has("Content-Range");
-		_should(support, url, http);
-		_must_or_return(RequireError::httpSupportRange, support, url);
+		_must_or_return(RequireError::httpSupportRange,
+			http.statusCode() == 206, url);
 
-		return {};
-	}
+		_must_or_return(InternalError::invalidInput,
+			http.headers().has("Content-Range"), url);
 
-	static Result checkUrlContentLength(ConStrRef url,
-		const HttpConfig& config, AbortSignal* abort,
-		int64_t* content)
-	{
-		HttpGetRequest http;
-		AbortSignal::Guard asg(abort, [&]() {
-			http.abort();
-		});
+		std::array<int64_t, 3> range;
+		parseHttpRange(http.headers()
+			.firstValue("Content-Range"), &range);
 
-		_call(http.init(config));
-		_call(http.open(url));
-		_equal_or_return_http_error(http, 200);
-
-		auto& cl = http.headers().contentLength();
-		_must_or_return(RequireError::httpSupportContentLenth,
-			cl.didSet(), url);
-
-		*content = cl;
+		*totalSize = range[2];
 		return {};
 	}
 
@@ -420,28 +597,65 @@ private:
 		HttpConfig config = userConfig();
 		_must_not(config.hasHeader("Range"));
 
-		int64_t contentLength = 0;
-		_call(checkUrlContentLength(url, config,
-			abort, &contentLength));
-
-		if (contentLength < KB(1)) {
+		int64_t totalSize = 0;
+		_call(checkUrlSupportRange(&totalSize, url, config, abort));
+		if (totalSize < KB(1)) {
 			connNum = 1;
 			uiConnNum = 1;
 		}
 
-		if (connNum > 1)
-			_call(checkUrlSupportRange(url, config, abort));
+		AppTaskParam param;
+		_call(getTaskParam(&param, totalSize));
+		return doDownloadStuff(param, abort);
+	}
 
+	Result getTaskParam(AppTaskParam* param, int64_t totalSize)
+	{
 		std::string filePath;
 		_call(buildSavingPath(&filePath));
 		m_preFilePath = filePath;
 
-		AppTaskParam param;
-		param.url = url;
-		param.filePath = filePath;
-		param.config = config;
+		param->url = uiUrl;
+		param->filePath = filePath;
+		param->config = userConfig();
+		param->totalSize = totalSize;
+		param->granularity = granularity(totalSize);
+		param->connNum = uiConnNum;
 
-		return doDownloadStuff(param, contentLength, connNum, abort);
+		return {};
+	}
+
+	int64_t granularity(int64_t totalSize)
+	{
+		typedef std::function<void()> Fn;
+		const int64_t& t = totalSize;
+		int64_t g = 0;
+
+		std::map<TaskGranularity, Fn> map_ = {
+			{TaskGranularity::OneTenth, [&]() { g = t / 10; }},
+			{TaskGranularity::OnePercent, [&]() { g = t / 100; }},
+			{TaskGranularity::Thousandth, [&]() { g = t / 1000; }},
+			{TaskGranularity::Fixed_1KB, [&]() { g = KB(1); }},
+			{TaskGranularity::Fixed_10KB, [&]() { g = KB(10); }},
+			{TaskGranularity::Fixed_100KB, [&]() { g = KB(100); }},
+			{TaskGranularity::Fixed_1MB, [&]() { g = MB(1); }},
+			{TaskGranularity::Fixed_10MB, [&]() { g = MB(10); }},
+			{TaskGranularity::Fixed_100MB, [&]() { g = MB(100); }}
+		};
+
+		TaskGranularity tg = uiGranularity.get();
+		if (map_.count(tg) > 0)
+			map_.at(tg)();
+		else
+			assert(0);
+
+		if (g < KB(1))
+			g = std::min<int64_t>(KB(1), totalSize);
+
+		if (g > totalSize)
+			g = totalSize;
+
+		return g;
 	}
 
 	std::string renameFilePath(const std::string& path, int number)
@@ -494,8 +708,7 @@ private:
 	}
 
 	Result doDownloadStuff(const AppTaskParam& param,
-		int64_t contentLength,
-		int connNum, AbortSignal* abort)
+		AbortSignal* abort)
 	{
 		setState(State::Working);
 		AppDownloadContractor contractor;
@@ -506,6 +719,7 @@ private:
 		std::stringstream ss;
 		TimePassed tp;
 		RPC::Model model;
+
 		contractor.onHeartbeat([&, this]() {
 			clear(&ss);
 			ss << contractor.statusText()
@@ -515,12 +729,22 @@ private:
 			model.clear();
 			contractor.getRanges(&model, RPC::kMaxRange);
 			uiProgress = model;
+
+			if (m_toResetWorkerWait) {
+				uiRetryNow = "";
+				m_toResetWorkerWait = false;
+			}
+			else {
+				uiRetryNow = contractor.hasWorkerWait()
+					? "Retry Now" : "";
+			}
 		});
 
-		return contractor.start(param, contentLength, connNum);
+		return contractor.start(param);
 	}
 
 private:
+	std::atomic_bool m_toResetWorkerWait = false;
 	std::string m_preFilePath;
 	AsyncController m_asyncController;
 };
