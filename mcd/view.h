@@ -13,15 +13,12 @@ class View
 {
 public:
 	enum TaskGranularity {
-		OneTenth = 0,
-		OnePercent,
-		Thousandth,
-		Fixed_1KB,
-		Fixed_10KB,
-		Fixed_100KB,
-		Fixed_1MB,
-		Fixed_10MB,
-		Fixed_100MB
+		Conn_x1 = 0,
+		Conn_x2,
+		Conn_x3,
+		Conn_x5,
+		Conn_x10,
+		Conn_x20
 	};
 
 	typedef RandomProgressCtrl RPC;
@@ -137,22 +134,19 @@ private:
 	ComboCtrl<TaskGranularity>::ItemMap granularityMap()
 	{
 		return {
-			{TaskGranularity::OneTenth, "One Tenth"},
-			{TaskGranularity::OnePercent, "One Percent"},
-			{TaskGranularity::Thousandth, "Thousandth"},
-			{TaskGranularity::Fixed_1KB, "1KiB"},
-			{TaskGranularity::Fixed_10KB, "10KiB"},
-			{TaskGranularity::Fixed_100KB, "100KiB"},
-			{TaskGranularity::Fixed_1MB, "1MiB"},
-			{TaskGranularity::Fixed_10MB, "10MiB"},
-			{TaskGranularity::Fixed_100MB, "100MiB"},
+			{TaskGranularity::Conn_x1, "x1"},
+			{TaskGranularity::Conn_x2, "x2"},
+			{TaskGranularity::Conn_x3, "x3"},
+			{TaskGranularity::Conn_x5, "x5"},
+			{TaskGranularity::Conn_x10, "x10"},
+			{TaskGranularity::Conn_x20, "x20"}
 		};
 	}
 
 	void initModels()
 	{
-		uiUrl = "https://github.com/dwyl/english-words/blob/master/words_alpha.txt?raw=true";
-		uiSavingPath = R"(D:\_TODO\tmp\test_download)";
+		uiUrl = "";
+		uiSavingPath = R"()";
 
 		uiChkProxyServer = false;
 		uiChkUserAgent = false;
@@ -162,7 +156,7 @@ private:
 		uiUserAgent = "";
 		uiCookie = "";
 
-		uiGranularity = TaskGranularity::OnePercent;
+		uiGranularity = TaskGranularity::Conn_x3;
 		uiConnNum = 1;
 		uiDownload = "Download";
 
@@ -261,6 +255,7 @@ public:
 			uiDownload.ctrl()->setEnabled(false);
 			break;
 
+		case State::Ready:
 		case State::Aborted:
 		case State::Failed:
 		case State::Complete:

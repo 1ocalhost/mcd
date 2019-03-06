@@ -292,7 +292,9 @@ public:
 
 		std::stringstream ss;
 		ss.precision(2);
-		ss << std::fixed << (progress * 100) << "% Got, ";
+		ss << std::fixed;
+		ss << formattedDataSize(m_taskParam.totalSize, false);
+		ss << " (" << (progress * 100) << "%), ";
 
 		size_t filledWidth = m_speedDataMaxLen - speedDataLen;
 		if (filledWidth > 100) {
@@ -363,6 +365,7 @@ private:
 
 	void abortAllWorkers()
 	{
+		m_writer.abort();
 		for (auto& i : m_workers)
 			i->abort();
 	}
@@ -446,7 +449,7 @@ private:
 class App : public ViewState
 {
 private:
-	static const int kMaxConn = 20;
+	static const int kMaxConn = 100;
 
 	bool onQuit() override
 	{
@@ -472,19 +475,24 @@ private:
 
 	void onDownload() override
 	{
-		setState(State::Waiting);
-
 		uiUrl = encodeUri(trim(uiUrl));
 		if (uiSavingPath.get().empty()) {
 			window.info("Please select a folder to save the file.");
 			return;
 		}
 
-		if (uiConnNum > kMaxConn)
-			uiConnNum = kMaxConn;
+		if (uiConnNum > kMaxConn) {
+			std::stringstream ss;
+			ss << "The maximum limit of connection number is ";
+			ss << kMaxConn << ".\n(your input: " << uiConnNum.get() << ")";
+			window.error(ss.str());
+			return;
+		}
 
 		if (uiConnNum <= 0)
 			uiConnNum = 1;
+
+		setState(State::Waiting);
 
 		m_asyncController.start(
 			Promise([&](AbortSignal* abort) {
@@ -619,36 +627,33 @@ private:
 		param->filePath = filePath;
 		param->config = userConfig();
 		param->totalSize = totalSize;
-		param->granularity = granularity(totalSize);
+		param->granularity = granularity(uiConnNum, totalSize);
 		param->connNum = uiConnNum;
 
 		return {};
 	}
 
-	int64_t granularity(int64_t totalSize)
+	int64_t granularity(int connNum, int64_t totalSize)
 	{
-		typedef std::function<void()> Fn;
 		const int64_t& t = totalSize;
 		int64_t g = 0;
 
-		std::map<TaskGranularity, Fn> map_ = {
-			{TaskGranularity::OneTenth, [&]() { g = t / 10; }},
-			{TaskGranularity::OnePercent, [&]() { g = t / 100; }},
-			{TaskGranularity::Thousandth, [&]() { g = t / 1000; }},
-			{TaskGranularity::Fixed_1KB, [&]() { g = KB(1); }},
-			{TaskGranularity::Fixed_10KB, [&]() { g = KB(10); }},
-			{TaskGranularity::Fixed_100KB, [&]() { g = KB(100); }},
-			{TaskGranularity::Fixed_1MB, [&]() { g = MB(1); }},
-			{TaskGranularity::Fixed_10MB, [&]() { g = MB(10); }},
-			{TaskGranularity::Fixed_100MB, [&]() { g = MB(100); }}
+		std::map<TaskGranularity, int> map_ = {
+			{TaskGranularity::Conn_x1, 1},
+			{TaskGranularity::Conn_x2, 2},
+			{TaskGranularity::Conn_x3, 3},
+			{TaskGranularity::Conn_x5, 5},
+			{TaskGranularity::Conn_x10, 10},
+			{TaskGranularity::Conn_x20, 20},
 		};
 
 		TaskGranularity tg = uiGranularity.get();
 		if (map_.count(tg) > 0)
-			map_.at(tg)();
+			g = t / (map_.at(tg) * connNum);
 		else
 			assert(0);
 
+		g += 1; // for round
 		if (g < KB(1))
 			g = std::min<int64_t>(KB(1), totalSize);
 

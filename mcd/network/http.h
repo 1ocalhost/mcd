@@ -335,8 +335,16 @@ public:
 		return {};
 	}
 
+	void abort()
+	{
+		m_aborted = true;
+	}
+
 	Result write(const BinaryData& data, int64_t pos)
 	{
+		if (m_aborted)
+			return InternalError::forceAbort();
+
 		Guard::Mutex lock(&m_mutex);
 		m_file.seekp(pos);
 		m_file.write((char*)data.buffer, data.size);
@@ -346,6 +354,7 @@ public:
 	}
 
 private:
+	bool m_aborted = false;
 	std::mutex m_mutex;
 	std::ofstream m_file;
 };

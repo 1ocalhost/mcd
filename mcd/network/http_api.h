@@ -51,8 +51,8 @@ inline Result createSession(HINTERNET *session,
 	Bool result = WinHttpSetTimeouts(session_,
 		5 * 1000, // DNS
 		timeoutSeconds * 1000, // connect
-		30 * 1000, // send
-		30 * 1000 // receive
+		timeoutSeconds * 1000, // send
+		timeoutSeconds * 1000 // receive
 	);
 	_must_or_return_winhttp_error(result);
 

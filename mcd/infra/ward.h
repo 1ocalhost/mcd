@@ -45,7 +45,8 @@ public:
 	static Result invalidInput() { return make(2); }
 	static Result exceedLimit() { return make(3); }
 	static Result userAbort() { return make(4); }
-	static Result ioError() { return make(5); }
+	static Result forceAbort() { return make(5); }
+	static Result ioError() { return make(6); }
 };
 
 class FeatureError {
