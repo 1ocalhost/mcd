@@ -1,6 +1,11 @@
 #pragma once
 #include "progress_bar.h"
+
+#pragma warning(push)
+#pragma warning(disable: 4091)
 #include <Shlobj.h> // SHBrowseForFolder
+#pragma warning(pop)
+
 
 BEGIN_NAMESPACE_MCD
 

@@ -1,6 +1,8 @@
 #pragma once
 #define NOMINMAX
 
+// void error C2760 with release build
+struct IUnknown;
 #include <Windows.h>
 #include <shlwapi.h>
 

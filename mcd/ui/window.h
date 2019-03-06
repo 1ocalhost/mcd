@@ -197,7 +197,7 @@ public:
 	}
 
 private:
-	static LRESULT _windowProc(
+	static LRESULT CALLBACK _windowProc(
 		Window* that, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		return that->windowProc(uMsg, wParam, lParam);

@@ -1,6 +1,5 @@
 #pragma once
 #include "control.h"
-#include <ShlObj_core.h> // ILCreateFromPath
 
 BEGIN_NAMESPACE_MCD
 
