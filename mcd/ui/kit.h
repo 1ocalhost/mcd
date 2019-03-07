@@ -301,8 +301,7 @@ inline void _formatDataSizeImpl(int64_t num, double* v, int* m, int* p)
 	}
 }
 
-inline void _formatDataSizeStream(int64_t num,
-	std::stringstream* ss, bool toRound)
+inline void _formatDataSizeStream(int64_t num, std::stringstream* ss)
 {
 	if (num < 1000) {
 		*ss << num << "bytes";
@@ -320,22 +319,21 @@ inline void _formatDataSizeStream(int64_t num,
 	if (magnitude > kMaxMagnitude)
 		return;
 
-	if (toRound) {
-		*ss << (int)round(value);
-	}
-	else {
-		ss->precision(precision);
-		*ss << std::fixed << value;
-	}
-
+	ss->precision(precision);
+	*ss << std::fixed << value;
 	*ss << units[magnitude] << "iB";
 }
 
 inline std::string formattedDataSize(int64_t num, bool toRound)
 {
 	std::stringstream ss;
-	_formatDataSizeStream(num, &ss, toRound);
-	return ss.str();
+	_formatDataSizeStream(num, &ss);
+	std::string str = ss.str();
+
+	if (toRound)
+		str.resize(str.find_last_not_of("0.") + 1);
+
+	return str;
 }
 
 class UiString : public std::string

@@ -284,7 +284,7 @@ public:
 	{
 		double speed = curSpeed();
 		double progress = sizeDone() / totalSize();
-		std::string speedData = formattedDataSize((int64_t)speed, true);
+		std::string speedData = formattedDataSize((int64_t)speed, false);
 
 		size_t speedDataLen = speedData.size();
 		if (speedDataLen > m_speedDataMaxLen)
@@ -293,7 +293,7 @@ public:
 		std::stringstream ss;
 		ss.precision(2);
 		ss << std::fixed;
-		ss << formattedDataSize(m_taskParam.totalSize, false);
+		ss << formattedDataSize(m_taskParam.totalSize, true);
 		ss << " (" << (progress * 100) << "%), ";
 
 		size_t filledWidth = m_speedDataMaxLen - speedDataLen;
