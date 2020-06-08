@@ -543,13 +543,13 @@ private:
 			config.setHttpProxy(uiProxyServer);
 
 		if (uiChkUserAgent) {
-			uiUserAgent = encodeUri(trim(uiUserAgent));
+			uiUserAgent = trim(uiUserAgent);
 			if (uiUserAgent.get().size())
 				config.addHeader(_S("User-Agent: ") + uiUserAgent);
 		}
 
 		if (uiChkCookie) {
-			uiCookie = encodeUri(trim(uiCookie));
+			uiCookie = trim(uiCookie);
 			if (uiCookie.get().size())
 				config.addHeader(_S("Cookie: ") + uiCookie);
 		}
